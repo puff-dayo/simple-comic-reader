@@ -1924,8 +1924,9 @@ class ComicReader(QMainWindow):
         except ValueError:
             return
         prev_idx = (curr_idx - 1) % len(ordered)
-        target_zip_path, target_item = ordered[prev_idx]
+        target_path_str, target_item = ordered[prev_idx]
         prev_path = current_zip_path
+
         try:
             if self.current_zip_obj is not None:
                 try:
@@ -1934,10 +1935,24 @@ class ComicReader(QMainWindow):
                     pass
                 self.current_zip_obj = None
                 self.current_zip_path = None
+            if self.current_pdf_obj is not None:
+                try:
+                    self.current_pdf_obj.close()
+                except Exception:
+                    pass
+                self.current_pdf_obj = None
+                self.current_pdf_path = None
         except Exception:
             pass
+
         self._remove_virtual_item_by_path(prev_path)
-        self.extract_zip_to_tree(target_item, Path(target_zip_path))
+
+        target_path = Path(target_path_str)
+        if is_pdf_ext(target_path.suffix):
+            self.extract_pdf_to_tree(target_item, target_path)
+        else:
+            self.extract_zip_to_tree(target_item, target_path)
+
 
     def next_archive(self):
         if not self.image_list or not (str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
@@ -1955,8 +1970,9 @@ class ComicReader(QMainWindow):
         except ValueError:
             return
         next_idx = (curr_idx + 1) % len(ordered)
-        target_zip_path, target_item = ordered[next_idx]
+        target_path_str, target_item = ordered[next_idx]
         prev_path = current_zip_path
+
         try:
             if self.current_zip_obj is not None:
                 try:
@@ -1965,10 +1981,24 @@ class ComicReader(QMainWindow):
                     pass
                 self.current_zip_obj = None
                 self.current_zip_path = None
+            if self.current_pdf_obj is not None:
+                try:
+                    self.current_pdf_obj.close()
+                except Exception:
+                    pass
+                self.current_pdf_obj = None
+                self.current_pdf_path = None
         except Exception:
             pass
+
         self._remove_virtual_item_by_path(prev_path)
-        self.extract_zip_to_tree(target_item, Path(target_zip_path))
+
+        target_path = Path(target_path_str)
+        if is_pdf_ext(target_path.suffix):
+            self.extract_pdf_to_tree(target_item, target_path)
+        else:
+            self.extract_zip_to_tree(target_item, target_path)
+
 
     def switch_to_archive(self, virtual_item):
         children = [virtual_item.child(i).data(0, Qt.UserRole) for i in range(virtual_item.childCount())]
