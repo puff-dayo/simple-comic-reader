@@ -14,6 +14,12 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon
 from PySide6.QtCore import Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo
 
+import fitz
+import pymupdf
+
+version = pymupdf.mupdf_version
+
+
 def is_archive_ext(ext: str) -> bool:
     if not ext:
         return False
@@ -22,6 +28,23 @@ def is_archive_ext(ext: str) -> bool:
 def is_archive_path_str(s: str) -> bool:
     try:
         return str(s).lower().endswith(('.zip', '.cbz'))
+    except Exception:
+        return False
+    
+def is_pdf_ext(ext: str) -> bool:
+    if not ext:
+        return False
+    return ext.lower() == '.pdf'
+
+def is_pdf_path_str(s: str) -> bool:
+    try:
+        return str(s).lower().endswith('.pdf')
+    except Exception:
+        return False
+
+def is_pdf_protocol(s: str) -> bool:
+    try:
+        return isinstance(s, str) and s.startswith("pdf://")
     except Exception:
         return False
     
@@ -810,6 +833,8 @@ class ComicReader(QMainWindow):
 
         self.current_zip_obj = None
         self.current_zip_path = None
+        self.current_pdf_obj = None
+        self.current_pdf_path = None
 
         self.virtual_items = {}
 
@@ -1042,7 +1067,14 @@ class ComicReader(QMainWindow):
                     pass
                 self.current_zip_obj = None
                 self.current_zip_path = None
-
+                
+            if self.current_pdf_obj is not None:
+                try:
+                    self.current_pdf_obj.close()
+                except Exception:
+                    pass
+                self.current_pdf_obj = None
+                self.current_pdf_path = None
 
             for zip_path in list(self.virtual_items.keys()):
                 virt = self.virtual_items.get(zip_path)
@@ -1174,10 +1206,10 @@ class ComicReader(QMainWindow):
         for file_path in sorted(self.current_dir.iterdir(), key=self.sort_key):
             if file_path.is_file():
                 ext = file_path.suffix.lower()
-                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} or is_archive_ext(ext):
+                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} or is_archive_ext(ext) or is_pdf_ext(ext):
                     item = QTreeWidgetItem([file_path.name])
                     item.setData(0, Qt.UserRole, str(file_path.resolve()))
-                    if is_archive_ext(ext):
+                    if is_archive_ext(ext) or is_pdf_ext(ext):
                         item.setIcon(0, get_icon_for_file(file_path))
                     else:
                         item.setText(0, file_path.stem)
@@ -1230,8 +1262,84 @@ class ComicReader(QMainWindow):
         if is_archive_path_str(data):
             zip_path = Path(data)
             self.extract_zip_to_tree(item, zip_path)
+        elif is_pdf_path_str(data):
+            pdf_path = Path(data)
+            self.extract_pdf_to_tree(item, pdf_path)
 
 
+    def extract_pdf_to_tree(self, parent_item, pdf_path: Path):
+        try:
+            pdf_path = Path(pdf_path).resolve()
+            pdf_path_str = str(pdf_path)
+
+            if pdf_path_str in self.virtual_items:
+                virt = self.virtual_items[pdf_path_str]
+                self.tree.setCurrentItem(virt)
+
+                if self.current_pdf_obj is None or self.current_pdf_path != pdf_path_str:
+                    if self.current_pdf_obj is not None:
+                        try:
+                            self.current_pdf_obj.close()
+                        except Exception:
+                            pass
+                        self.current_pdf_obj = None
+                        self.current_pdf_path = None
+
+                    self.current_pdf_obj = fitz.open(pdf_path_str)
+                    self.current_pdf_path = pdf_path_str
+
+                pdf_files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
+                self.image_list = pdf_files
+                self.current_index = 0
+                if pdf_files:
+                    self.load_image(pdf_files[0])
+                    self.tree.setCurrentItem(virt.child(0))
+                return
+
+            if self.current_pdf_obj is not None and self.current_pdf_path != pdf_path_str:
+                try:
+                    self.current_pdf_obj.close()
+                except Exception:
+                    pass
+                self.current_pdf_obj = None
+                self.current_pdf_path = None
+
+            doc = fitz.open(pdf_path_str)
+
+            virtual_item = QTreeWidgetItem([f"{UI['tree_expand_zip_prefix']}{pdf_path.name}"])
+            virtual_item.setData(0, Qt.UserRole, pdf_path_str)
+            virtual_item.setIcon(0, self.style().standardIcon(QStyle.SP_DirOpenIcon))
+
+            pdf_files = []
+            for p in range(len(doc)):
+                label = f"Page {p+1}"
+                sub_item = QTreeWidgetItem([label])
+                sub_item.setData(0, Qt.UserRole, f"pdf://{pdf_path_str}:{p}")
+                virtual_item.addChild(sub_item)
+                pdf_files.append(f"pdf://{pdf_path_str}:{p}")
+
+            if parent_item.parent() is None:
+                index = self.tree.indexOfTopLevelItem(parent_item)
+                self.tree.insertTopLevelItem(index + 1, virtual_item)
+            else:
+                parent = parent_item.parent()
+                child_index = parent.indexOfChild(parent_item)
+                parent.insertChild(child_index + 1, virtual_item)
+
+            self.virtual_items[pdf_path_str] = virtual_item
+            self.tree.expandItem(virtual_item)
+
+            self.current_pdf_obj = doc
+            self.current_pdf_path = pdf_path_str
+
+            self.image_list = pdf_files
+            self.current_index = 0
+            if pdf_files:
+                self.load_image(pdf_files[0])
+                self.tree.setCurrentItem(virtual_item.child(0))
+
+        except Exception as e:
+            QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
     def extract_zip_to_tree(self, parent_item, zip_path: Path):
         try:
@@ -1254,7 +1362,6 @@ class ComicReader(QMainWindow):
                     self.current_zip_obj = zipfile.ZipFile(zip_path_str, 'r')
                     self.current_zip_path = zip_path_str
 
-
                 zip_files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
                 self.image_list = zip_files
                 self.current_index = 0
@@ -1263,7 +1370,6 @@ class ComicReader(QMainWindow):
                     self.tree.setCurrentItem(virt.child(0))
                 return
 
-
             if self.current_zip_obj is not None and self.current_zip_path != zip_path_str:
                 try:
                     self.current_zip_obj.close()
@@ -1271,7 +1377,6 @@ class ComicReader(QMainWindow):
                     pass
                 self.current_zip_obj = None
                 self.current_zip_path = None
-
 
             zf = zipfile.ZipFile(zip_path_str, 'r')
 
@@ -1290,7 +1395,6 @@ class ComicReader(QMainWindow):
                     virtual_item.addChild(sub_item)
                     zip_files.append(f"zip://{zip_path_str}:{name}")
 
-
             if parent_item.parent() is None:
                 index = self.tree.indexOfTopLevelItem(parent_item)
                 self.tree.insertTopLevelItem(index + 1, virtual_item)
@@ -1302,7 +1406,6 @@ class ComicReader(QMainWindow):
             self.virtual_items[zip_path_str] = virtual_item
             self.tree.expandItem(virtual_item)
 
-
             self.current_zip_obj = zf
             self.current_zip_path = zip_path_str
 
@@ -1313,16 +1416,16 @@ class ComicReader(QMainWindow):
                 self.tree.setCurrentItem(virtual_item.child(0))
 
         except Exception as e:
-            QMessageBox.warning(self, UI["app_window_title"], f"{e}")
+            QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_zip_failed'].format(error=str(e)))
 
 
     def load_image(self, image_path):
         try:
             if isinstance(image_path, str) and image_path.startswith("zip://"):
+                # zip
                 before_last, file_in_zip = image_path.rsplit(":", 1)
                 zip_path = Path(before_last[6:]).resolve()
                 zip_path_str = str(zip_path)
-
 
                 if self.current_zip_obj is None or self.current_zip_path != zip_path_str:
                     if self.current_zip_obj is not None:
@@ -1335,23 +1438,64 @@ class ComicReader(QMainWindow):
                     self.current_zip_obj = zipfile.ZipFile(zip_path_str, 'r')
                     self.current_zip_path = zip_path_str
 
-
                 with self.current_zip_obj.open(file_in_zip) as f:
                     data = f.read()
                     pixmap = QPixmap()
                     pixmap.loadFromData(data)
                     self.current_pixmap = pixmap
                     self.display_current_pixmap()
-            else:
+                    try:
+                        self.select_tree_item_for_path(image_path)
+                    except Exception:
+                        pass
 
+            elif isinstance(image_path, str) and image_path.startswith("pdf://"):
+                # PDF
+                before_last, page_idx = image_path.rsplit(":", 1)
+                pdf_path = Path(before_last[6:]).resolve()
+                pdf_path_str = str(pdf_path)
+                try:
+                    page_num = int(page_idx)
+                except Exception:
+                    page_num = 0
+
+                if self.current_pdf_obj is None or self.current_pdf_path != pdf_path_str:
+                    if self.current_pdf_obj is not None:
+                        try:
+                            self.current_pdf_obj.close()
+                        except Exception:
+                            pass
+                        self.current_pdf_obj = None
+                        self.current_pdf_path = None
+                    self.current_pdf_obj = fitz.open(pdf_path_str)
+                    self.current_pdf_path = pdf_path_str
+
+                try:
+                    page = self.current_pdf_obj[page_num]
+                    zoom = 2.0  # 2.0 => 144 DPI
+                    mat = fitz.Matrix(zoom, zoom)
+                    pm = page.get_pixmap(matrix=mat, alpha=False)
+                    img_bytes = pm.tobytes("png")
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(img_bytes)
+                    self.current_pixmap = pixmap
+                    self.display_current_pixmap()
+                    try:
+                        self.select_tree_item_for_path(image_path)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_load_failed'].format(error=str(e)))
+
+            else:
+                # image file
                 pixmap = QPixmap(str(image_path))
                 self.current_pixmap = pixmap
                 self.display_current_pixmap()
-                
-            try:
-                self.select_tree_item_for_path(image_path)
-            except Exception:
-                pass
+                try:
+                    self.select_tree_item_for_path(str(image_path))
+                except Exception:
+                    pass
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
@@ -1556,13 +1700,13 @@ class ComicReader(QMainWindow):
                 ds = str(data)
             except Exception:
                 continue
-            if is_archive_path_str(ds):
+            if is_archive_path_str(ds) or is_pdf_path_str(ds):
                 zip_path = str(Path(ds).resolve())
                 out.append((zip_path, top))
         return out
 
     def prev_archive(self):
-        if not self.image_list or not str(self.image_list[0]).startswith("zip://"):
+        if not self.image_list or not (str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
             return
         current_data = self.image_list[self.current_index]
         before_last, _ = current_data.rsplit(":", 1)
@@ -1592,8 +1736,9 @@ class ComicReader(QMainWindow):
         self.extract_zip_to_tree(target_item, Path(target_zip_path))
 
     def next_archive(self):
-        if not self.image_list or not str(self.image_list[0]).startswith("zip://"):
+        if not self.image_list or not (str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
             return
+
         current_data = self.image_list[self.current_index]
         before_last, _ = current_data.rsplit(":", 1)
         current_zip_path = str(Path(before_last[6:]).resolve())
