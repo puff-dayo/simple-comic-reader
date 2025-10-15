@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit
 from PySide6.QtGui import QKeySequence, QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon, QImage
 from PySide6.QtCore import (
-    Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool
+    Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool, QTimer
     )
 
 import fitz
@@ -771,6 +771,11 @@ class ImageLabel(QLabel):
             reset_act = QAction(UI['shortcuts_reset_zoom'], self)
             reset_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
             menu.addAction(reset_act)
+            
+            # TODO: translation
+            clear_cache_act = QAction("Clear render cache and reload", self)
+            clear_cache_act.triggered.connect(lambda: mw.clear_cache_and_rerender())
+            menu.addAction(clear_cache_act)
 
             toggle_list_act = QAction(UI['context_menu_show_hide_file_panel'], self)
             toggle_list_act.triggered.connect(mw.toggle_file_list)
@@ -853,7 +858,7 @@ class _PdfRenderTask(QRunnable):
             if orig_w <= 0 or orig_h <= 0:
                 mat = fitz.Matrix(1, 1)
             else:
-                scale = min(max(1.0, min(self.target_w / orig_w, self.target_h / orig_h)), 3.0)
+                scale = min(max(0.5, min(self.target_w / orig_w, self.target_h / orig_h)), 2.0)
                 mat = fitz.Matrix(scale, scale)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             n = pix.n
@@ -958,7 +963,7 @@ class ComicReader(QMainWindow):
 
         self.image_label = ImageLabel()
         self.image_label.setText(UI['labels_image_placeholder'])
-        self.image_label.setMinimumSize(400, 400)
+        self.image_label.setMinimumWidth(120)
         scroll = QScrollArea()
         scroll.setWidgetResizable(False)
         scroll.setWidget(self.image_label)
@@ -1001,7 +1006,15 @@ class ComicReader(QMainWindow):
             
         self.setup_shortcuts()
 
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self._on_viewport_resized)
 
+        try:
+            vp = self._scroll_area.viewport()
+            self._last_viewport_size = (vp.width(), vp.height())
+        except Exception:
+            self._last_viewport_size = (0, 0)
 
     def setup_shortcuts(self):
         try:
@@ -1561,7 +1574,118 @@ class ComicReader(QMainWindow):
 
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_zip_failed'].format(error=str(e)))
+            
+    def pre_render_adjacent_pages(self, pdf_path: str, page_num: int):
+        try:
+            pdf_path = str(Path(pdf_path).resolve())
+        except Exception:
+            return
 
+        try:
+            viewport = self._scroll_area.viewport()
+            vw = max(1, viewport.width())
+            vh = max(1, viewport.height())
+        except Exception:
+            vw, vh = 800, 600
+
+        page_count = None
+        try:
+            if self.current_pdf_obj is not None and self.current_pdf_path == pdf_path:
+                page_count = len(self.current_pdf_obj)
+        except Exception:
+            page_count = None
+
+        if page_count is None:
+            try:
+                doc = fitz.open(pdf_path)
+                page_count = len(doc)
+                doc.close()
+            except Exception:
+                page_count = None
+
+        if page_count is None:
+            return
+
+        neighbors = []
+        if page_num - 1 >= 0:
+            neighbors.append(page_num - 1)
+        if page_num + 1 < page_count:
+            neighbors.append(page_num + 1)
+
+        for p in neighbors:
+            key = (pdf_path, p, int(vw), int(vh))
+            if self._cache_get(key) is not None:
+                continue
+            try:
+                self.request_pdf_page_render(pdf_path, p, vw, vh)
+            except Exception:
+                pass
+            
+    def clear_cache_and_rerender(self):
+        if not self.image_list or not (0 <= self.current_index < len(self.image_list)):
+            QMessageBox.information(self, UI["app_window_title"], UI.get('messages_no_selection', "No file selected"))
+            return
+
+        cur = self.image_list[self.current_index]
+        try:
+            cur_str = str(cur)
+        except Exception:
+            cur_str = ""
+
+        if cur_str.startswith("pdf://"):
+            try:
+                before_last, p = cur_str.rsplit(":", 1)
+                pdf_path = str(Path(before_last[6:]).resolve())
+                page_num = int(p)
+            except Exception:
+                QMessageBox.warning(self, UI["app_window_title"], "Invalid PDF reference.")
+                return
+
+            try:
+                self._pdf_pixmap_cache.clear()
+            except Exception:
+                try:
+                    self._pdf_pixmap_cache = collections.OrderedDict()
+                except Exception:
+                    pass
+
+            self.current_pixmap = None
+            self.image_label.setPixmap(QPixmap())
+            self.hide_overlays()
+
+            try:
+                viewport = self._scroll_area.viewport()
+                vw = max(1, viewport.width())
+                vh = max(1, viewport.height())
+            except Exception:
+                vw, vh = 800, 600
+
+            pm = None
+            try:
+                pm = self.request_pdf_page_render(pdf_path, page_num, vw, vh)
+            except Exception:
+                pm = None
+
+            if pm:
+                self.current_pixmap = pm
+                self.display_current_pixmap()
+
+            return
+
+        if cur_str.startswith("zip://"):
+            try:
+                self.load_image(cur_str)
+                QMessageBox.information(self, UI["app_window_title"], "Reloaded image from archive.")
+            except Exception as e:
+                QMessageBox.warning(self, UI["app_window_title"], f"Reload failed: {e}")
+            return
+
+        try:
+            self.load_image(cur_str)
+            QMessageBox.information(self, UI["app_window_title"], "Reloaded image file.")
+        except Exception as e:
+            QMessageBox.warning(self, UI["app_window_title"], f"Reload failed: {e}")
+            
 
     def load_image(self, image_path):
         try:
@@ -1634,15 +1758,14 @@ class ComicReader(QMainWindow):
                     self.current_pixmap = pm
                     self.display_current_pixmap()
                     try:
+                        self.pre_render_adjacent_pages(pdf_path, page_num)
+                    except Exception:
+                        pass
+                    try:
                         self.select_tree_item_for_path(image_path)
                     except Exception:
                         pass
                     return
-
-                try:
-                    self.select_tree_item_for_path(image_path)
-                except Exception:
-                    pass
 
             else:
                 # image file
@@ -2124,12 +2247,38 @@ class ComicReader(QMainWindow):
     def eventFilter(self, watched, event):
         if watched is getattr(self, "_viewport", None):
             if event.type() == QEvent.Resize:
-
                 self.position_overlays()
+                try:
+                    self._resize_timer.start(500)
+                except Exception:
+                    pass
                 self.display_current_pixmap()
         return super().eventFilter(watched, event)
+    
+    def _on_viewport_resized(self):
+        try:
+            vp = self._scroll_area.viewport()
+            vw, vh = max(1, vp.width()), max(1, vp.height())
+        except Exception:
+            return
 
+        self._last_viewport_size = (vw, vh)
 
+        if not self.image_list or not (0 <= self.current_index < len(self.image_list)):
+            return
+
+        cur = self.image_list[self.current_index]
+        try:
+            cur_str = str(cur)
+        except Exception:
+            cur_str = ""
+
+        if cur_str.startswith("pdf://"):
+            try:
+                self.clear_cache_and_rerender()
+            except Exception as e:
+                # print(f"[warn] auto re-render on resize failed: {e}")
+                pass
 
     def closeEvent(self, event):
         try:
