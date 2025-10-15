@@ -12,7 +12,7 @@
 - 文件系统导航
 - PDF 渲染缓存
 - 无需解压即可查看 `.zip` / `.cbz` 漫画
-- 支持 `.jpg`、`.jpeg`、`.png`、`.gif`、`.bmp`
+- 支持 `.jpg`、`.jpeg`、`.png`、`.gif`、`.bmp`、`.webp`
 - 缩放与自适应模式
 - 键盘快捷键
 - 可配置设置（保存在 `config.ini`）

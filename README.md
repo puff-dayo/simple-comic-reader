@@ -12,7 +12,7 @@ Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fu
 - File system navigation
 - PDF render with cache
 - View `.zip` / `.cbz` comic without extraction
-- Support `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`
+- Support `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`
 - Zoom & Fit Modes
 - Keyboard Shortcuts
 - Configurable Settings saved in `config.ini`
