@@ -312,7 +312,7 @@ UI_JSON = {
             "</ul>\n"
             "<h4>支持的文件类型</h4>\n"
             "<ul>\n"
-            "<li>图片：.jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>图片：.jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
             "<li>压缩包：.zip, .cbz（双击可展开查看内部图片）</li>\n"
             "<li>PDF 文档：.pdf（逐页查看）</li>\n"
             "</ul>\n"
@@ -338,7 +338,7 @@ UI_JSON = {
             "</ul>\n"
             "<h4>Supported file types</h4>\n"
             "<ul>\n"
-            "<li>Images: .jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>Images: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
             "<li>Archives: .zip, .cbz (double-click to expand and view contained images)</li>\n"
             "<li>PDF: .pdf (view page-by-page)</li>\n"
             "</ul>\n"
@@ -364,7 +364,7 @@ UI_JSON = {
             "</ul>\n"
             "<h4>Поддерживаемые типы файлов</h4>\n"
             "<ul>\n"
-            "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
             "<li>Архивы: .zip, .cbz (двойной клик — раскрыть и просмотреть файлы внутри)</li>\n"
             "<li>PDF: .pdf (просмотр по страницам)</li>\n"
             "</ul>\n"
@@ -1347,7 +1347,7 @@ class ComicReader(QMainWindow):
                                 entries.append(('d', de))
                             elif de.is_file(follow_symlinks=False):
                                 name_lower = de.name.lower()
-                                if name_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) \
+                                if name_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')) \
                                 or name_lower.endswith(('.zip', '.cbz', '.pdf')):
                                     entries.append(('f', de))
                         except Exception:
@@ -1360,7 +1360,7 @@ class ComicReader(QMainWindow):
                                 entries.append(('d', p))
                             elif p.is_file():
                                 ext = p.suffix.lower()
-                                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.zip', '.cbz', '.pdf'}:
+                                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.zip', '.cbz', '.pdf'}:
                                     entries.append(('f', p))
                         except Exception:
                             continue
@@ -1403,7 +1403,8 @@ class ComicReader(QMainWindow):
                         if is_archive_ext(ext) or is_pdf_ext(ext):
                             item.setIcon(0, get_icon_for_file(full_path))
                         else:
-                            item.setText(0, full_path.stem)
+                            item.setIcon(0, get_icon_for_file(full_path))
+                            item.setText(0, name)
                         items.append(item)
                 except Exception:
                     continue
@@ -1528,7 +1529,7 @@ class ComicReader(QMainWindow):
             return
 
         ext = file_path.suffix.lower()
-        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} and file_path.exists():
+        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'} and file_path.exists():
             self.load_image(str(file_path))
             self.image_list = [str(file_path)]
             self.current_index = 0
@@ -1694,7 +1695,7 @@ class ComicReader(QMainWindow):
                 base = os.path.basename(name)
                 if not base:
                     continue
-                if base.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                if base.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
                     sub_item = QTreeWidgetItem([base])
                     sub_item.setData(0, Qt.UserRole, f"zip://{zip_path_str}:{name}")
                     virtual_item.addChild(sub_item)
