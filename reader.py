@@ -528,10 +528,7 @@ def load_lang_from_JSON(lang):
     recurse("", UI_JSON)
     return flat_ui
 
-# UI = load_lang_from_JSON(lang)
-
-UI = load_lang_from_JSON("ru")
-
+UI = load_lang_from_JSON(lang)
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, config=None):
@@ -709,21 +706,21 @@ class ImageLabel(QLabel):
         mw = self.main_window
         menu = QMenu(self)
         if mw:
-            copy_act = QAction(UI['shortcuts_copy_image'], self)
+            copy_act = QAction(UI['context_menu_copy_image'], self)
             copy_act.triggered.connect(mw.copy_current_to_clipboard)
             menu.addAction(copy_act)
 
             menu.addSeparator()
 
-            fit_page_act = QAction(UI['shortcuts_fit_page'], self)
+            fit_page_act = QAction(UI['context_menu_fit_page'], self)
             fit_page_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
             menu.addAction(fit_page_act)
 
-            fit_height_act = QAction(UI['shortcuts_fit_height'], self)
+            fit_height_act = QAction(UI['context_menu_fit_height'], self)
             fit_height_act.triggered.connect(lambda: mw.set_scale_mode("fit_height"))
             menu.addAction(fit_height_act)
 
-            fit_width_act = QAction(UI['shortcuts_fit_width'], self)
+            fit_width_act = QAction(UI['context_menu_fit_width'], self)
             fit_width_act.triggered.connect(lambda: mw.set_scale_mode("fit_width"))
             menu.addAction(fit_width_act)
 
@@ -739,8 +736,8 @@ class ImageLabel(QLabel):
             reset_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
             menu.addAction(reset_act)
 
-            toggle_list_act = QAction(UI['shortcuts_show_hide_file_panel'], self)
-            toggle_list_act.triggered.connect(self.toggle_file_list)
+            toggle_list_act = QAction(UI['context_menu_show_hide_file_panel'], self)
+            toggle_list_act.triggered.connect(mw.toggle_file_list)
             menu.addAction(toggle_list_act)
 
         menu.exec(event.globalPos())
