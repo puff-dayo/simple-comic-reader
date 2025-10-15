@@ -8,14 +8,16 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeWidget, QTreeWidgetItem, QLabel,
     QVBoxLayout, QHBoxLayout, QWidget, QFileDialog, QMenu, QMessageBox,
     QStyle, QSplitter, QPushButton, QComboBox, QScrollArea, QFileIconProvider
-)
+    )
 from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit
-from PySide6.QtGui import QKeySequence
-from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon
-from PySide6.QtCore import Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo
+from PySide6.QtGui import QKeySequence, QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon, QImage
+from PySide6.QtCore import (
+    Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool
+    )
 
 import fitz
 import pymupdf
+import collections
 
 version = pymupdf.mupdf_version
 
@@ -818,6 +820,49 @@ class EdgeClickArea(QWidget):
             super().mousePressEvent(event)
 
 
+class _RenderSignal(QObject):
+    finished = Signal(str, int, QPixmap)
+
+
+class _PdfRenderTask(QRunnable):
+    def __init__(self, pdf_path: str, page_num: int, target_w: int, target_h: int, sig: _RenderSignal):
+        super().__init__()
+        self.pdf_path = pdf_path
+        self.page_num = page_num
+        self.target_w = target_w
+        self.target_h = target_h
+        self.sig = sig
+
+    def run(self):
+        try:
+            doc = fitz.open(self.pdf_path)
+            page = doc[self.page_num]
+            rect = page.rect
+            orig_w, orig_h = rect.width, rect.height
+            if orig_w <= 0 or orig_h <= 0:
+                mat = fitz.Matrix(1, 1)
+            else:
+                scale = min(max(1.0, min(self.target_w / orig_w, self.target_h / orig_h)), 3.0)
+                mat = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            n = pix.n
+            if n == 3:
+                fmt = QImage.Format_RGB888
+            elif n == 4:
+                fmt = QImage.Format_RGBA8888
+            else:
+                fmt = QImage.Format_RGB888
+            qimg = QImage(pix.samples, pix.width, pix.height, pix.stride, fmt).copy()
+            qpix = QPixmap.fromImage(qimg)
+            self.sig.finished.emit(self.pdf_path, self.page_num, qpix)
+            doc.close()
+        except Exception as e:
+            try:
+                self.sig.finished.emit(self.pdf_path, self.page_num, QPixmap())
+            except Exception:
+                pass
+
+
 class ComicReader(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -833,8 +878,12 @@ class ComicReader(QMainWindow):
 
         self.current_zip_obj = None
         self.current_zip_path = None
+        
         self.current_pdf_obj = None
         self.current_pdf_path = None
+        self._pdf_pixmap_cache = collections.OrderedDict()
+        self._pdf_cache_max = 32
+        self._render_pool = QThreadPool.globalInstance()
 
         self.virtual_items = {}
 
@@ -1450,42 +1499,55 @@ class ComicReader(QMainWindow):
                         pass
 
             elif isinstance(image_path, str) and image_path.startswith("pdf://"):
-                # PDF
                 before_last, page_idx = image_path.rsplit(":", 1)
-                pdf_path = Path(before_last[6:]).resolve()
-                pdf_path_str = str(pdf_path)
+                pdf_path = str(Path(before_last[6:]).resolve())
                 try:
                     page_num = int(page_idx)
                 except Exception:
                     page_num = 0
 
-                if self.current_pdf_obj is None or self.current_pdf_path != pdf_path_str:
-                    if self.current_pdf_obj is not None:
-                        try:
+                if self.current_pdf_obj is None or self.current_pdf_path != pdf_path:
+                    try:
+                        if self.current_pdf_obj is not None:
                             self.current_pdf_obj.close()
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
+                    try:
+                        self.current_pdf_obj = fitz.open(pdf_path)
+                        self.current_pdf_path = pdf_path
+                    except Exception:
                         self.current_pdf_obj = None
                         self.current_pdf_path = None
-                    self.current_pdf_obj = fitz.open(pdf_path_str)
-                    self.current_pdf_path = pdf_path_str
 
-                try:
-                    page = self.current_pdf_obj[page_num]
-                    zoom = 2.0  # 2.0 => 144 DPI
-                    mat = fitz.Matrix(zoom, zoom)
-                    pm = page.get_pixmap(matrix=mat, alpha=False)
-                    img_bytes = pm.tobytes("png")
-                    pixmap = QPixmap()
-                    pixmap.loadFromData(img_bytes)
-                    self.current_pixmap = pixmap
+                viewport = self._scroll_area.viewport()
+                vw = max(1, viewport.width())
+                vh = max(1, viewport.height())
+
+                key = (pdf_path, page_num, vw, vh)
+                cached = self._cache_get(key)
+                if cached:
+                    self.current_pixmap = cached
                     self.display_current_pixmap()
                     try:
                         self.select_tree_item_for_path(image_path)
                     except Exception:
                         pass
-                except Exception as e:
-                    QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_load_failed'].format(error=str(e)))
+                    return
+
+                pm = self.request_pdf_page_render(pdf_path, page_num, vw, vh)
+                if pm:
+                    self.current_pixmap = pm
+                    self.display_current_pixmap()
+                    try:
+                        self.select_tree_item_for_path(image_path)
+                    except Exception:
+                        pass
+                    return
+
+                try:
+                    self.select_tree_item_for_path(image_path)
+                except Exception:
+                    pass
 
             else:
                 # image file
@@ -1498,6 +1560,53 @@ class ComicReader(QMainWindow):
                     pass
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
+
+    def _cache_get(self, key):
+        try:
+            val = self._pdf_pixmap_cache.pop(key)
+            self._pdf_pixmap_cache[key] = val
+            return val
+        except KeyError:
+            return None
+
+    def _cache_put(self, key, pixmap):
+        if key in self._pdf_pixmap_cache:
+            self._pdf_pixmap_cache.pop(key)
+        self._pdf_pixmap_cache[key] = pixmap
+        while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
+            self._pdf_pixmap_cache.popitem(last=False)
+            
+    def request_pdf_page_render(self, pdf_path: str, page_num: int, target_w: int, target_h: int):
+        key = (pdf_path, page_num, int(target_w), int(target_h))
+        cached = self._cache_get(key)
+        if cached:
+            return cached
+        if not hasattr(self, "_render_signal"):
+            self._render_signal = _RenderSignal()
+            self._render_signal.finished.connect(self._on_pdf_render_finished)
+        task = _PdfRenderTask(pdf_path, page_num, target_w, target_h, self._render_signal)
+        self._render_pool.start(task)
+        return None
+    
+    def _on_pdf_render_finished(self, pdf_path: str, page_num: int, pixmap: QPixmap):
+        if pixmap and not pixmap.isNull():
+            key = (pdf_path, page_num, pixmap.width(), pixmap.height())
+            self._cache_put(key, pixmap)
+        cur = None
+        if self.image_list and 0 <= self.current_index < len(self.image_list):
+            cur = self.image_list[self.current_index]
+        if isinstance(cur, str) and cur.startswith("pdf://"):
+            before_last, p = cur.rsplit(":", 1)
+            try:
+                cur_pdf = str(Path(before_last[6:]).resolve())
+                cur_page = int(p)
+            except Exception:
+                cur_pdf, cur_page = None, None
+            if cur_pdf == pdf_path and cur_page == page_num:
+                pm = self._cache_get((pdf_path, page_num, pixmap.width(), pixmap.height()))
+                if pm:
+                    self.current_pixmap = pm
+                    self.display_current_pixmap()
 
 
     def display_current_pixmap(self):
