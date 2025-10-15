@@ -292,7 +292,7 @@ UI_JSON = {
   },
   "dialogs": {
     "help_html": {
-      "zh": "<h3>📖 简单漫画阅读器</h3>\n"
+      "zh": "<h3>简单漫画阅读器</h3>\n"
             f"<p><b>版本：</b> {APP_VERSION}</p>\n"
             "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
@@ -300,8 +300,8 @@ UI_JSON = {
             "<ul>\n"
             "<li><b>← / →</b>：上一页 / 下一页</li>\n"
             "<li><b>↑ / ↓</b>：上一个 / 下一个压缩包</li>\n"
-            "<li><b>双击支持的文件</b>：展开查看或打开支持的文件</li>\n"
-            "<li><b>右键</b>：显示操作功能选项 </li>\n"
+            "<li><b>单击支持的文件</b>：展开或打开支持的文件</li>\n"
+            "<li><b>右键</b>：显示操作菜单</li>\n"
             "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
             "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
             "<li><b>Ctrl + 滚轮：</b> 快速调整缩放（每格 ±10%）</li>\n"
@@ -313,12 +313,13 @@ UI_JSON = {
             "<h4>支持的文件类型</h4>\n"
             "<ul>\n"
             "<li>图片：.jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>压缩包：.zip, .cbz（双击可展开查看内部图片）</li>\n"
-            "<li>PDF 文档：.pdf（逐页查看）</li>\n"
+            "<li>压缩包：.zip, .cbz（单击可展开查看内部图片）</li>\n"
+            "<li>PDF 文档：.pdf（单击可展开逐页查看）</li>\n"
             "</ul>\n"
             "<hr>\n"
-            "<p>程序记忆设置到 <code>config.ini</code> 文件中。</p>",
-      "en": "<h3>📖 Simple Comic Reader</h3>\n"
+            "<p>程序记忆设置保存到 <code>config.ini</code> 文件中。</p>",
+
+      "en": "<h3>Simple Comic Reader</h3>\n"
             f"<p><b>Version:</b> {APP_VERSION}</p>\n"
             "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
@@ -326,10 +327,10 @@ UI_JSON = {
             "<ul>\n"
             "<li><b>← / →</b>: Previous / Next page</li>\n"
             "<li><b>↑ / ↓</b>: Previous / Next archive</li>\n"
-            "<li><b>Double-click supported files</b>: Expand or open supported files</li>\n    "
+            "<li><b>Click supported files</b>: Expand or open supported files</li>\n"
             "<li><b>Right-click</b>: Show action menu</li>\n"
             "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
-            "<li><b>Wheel:</b> Pan when image exceeds window</li>\n"
+            "<li><b>Mouse wheel:</b> Pan when image exceeds window</li>\n"
             "<li><b>Ctrl + Wheel:</b> Adjust zoom quickly (±10% per notch)</li>\n"
             "<li><b>Edge clicks:</b> Click left/right edges to flip pages</li>\n"
             "<li><b>F11 or ⛶ button:</b> Toggle fullscreen</li>\n"
@@ -339,12 +340,13 @@ UI_JSON = {
             "<h4>Supported file types</h4>\n"
             "<ul>\n"
             "<li>Images: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>Archives: .zip, .cbz (double-click to expand and view contained images)</li>\n"
-            "<li>PDF: .pdf (view page-by-page)</li>\n"
+            "<li>Archives: .zip, .cbz (click to expand and view contained images)</li>\n"
+            "<li>PDF: .pdf (click to expand and view page-by-page)</li>\n"
             "</ul>\n"
             "<hr>\n"
-            "<p>Program stores settings to <code>config.ini</code>.</p>",
-      "ru": "<h3>📖 Простой просмотрщик комиксов</h3>\n"
+            "<p>Program stores settings in <code>config.ini</code>.</p>",
+
+      "ru": "<h3>Простой просмотрщик комиксов</h3>\n"
             f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
             "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
@@ -352,7 +354,7 @@ UI_JSON = {
             "<ul>\n"
             "<li><b>← / →</b>: Предыдущая / Следующая страница</li>\n"
             "<li><b>↑ / ↓</b>: Предыдущий / Следующий архив</li>\n"
-            "<li><b>Двойной клик по поддерживаемым файлам</b>: открыть или развернуть поддерживаемые файлы</li>\n"
+            "<li><b>Клик по поддерживаемым файлам</b>: открыть или развернуть их</li>\n"
             "<li><b>Правый клик</b>: Показать меню действий</li>\n"
             "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
             "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
@@ -365,8 +367,8 @@ UI_JSON = {
             "<h4>Поддерживаемые типы файлов</h4>\n"
             "<ul>\n"
             "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>Архивы: .zip, .cbz (двойной клик — раскрыть и просмотреть файлы внутри)</li>\n"
-            "<li>PDF: .pdf (просмотр по страницам)</li>\n"
+            "<li>Архивы: .zip, .cbz (клик — раскрыть и просмотреть файлы внутри)</li>\n"
+            "<li>PDF: .pdf (клик — просмотреть постранично)</li>\n"
             "</ul>\n"
             "<hr>\n"
             "<p>Программа сохраняет настройки в файле <code>config.ini</code>.</p>"
@@ -428,6 +430,11 @@ UI_JSON = {
     }
   },
   "context_menu": {
+    "refresh": {
+        "zh": "刷新",
+        "en": "Refresh",
+        "ru": "Обновить"
+    },
     "copy_image": {
       "zh": "复制图片",
       "en": "Copy image",
@@ -815,8 +822,7 @@ class ImageLabel(QLabel):
             reset_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
             menu.addAction(reset_act)
             
-            # TODO: translation
-            clear_cache_act = QAction("Clear render cache and reload", self)
+            clear_cache_act = QAction(UI['context_menu_refresh'], self)
             clear_cache_act.triggered.connect(lambda: mw.clear_cache_and_rerender())
             menu.addAction(clear_cache_act)
 
@@ -934,6 +940,7 @@ class ComicReader(QMainWindow):
         self.sort_by_date = False
         self.image_list = []
         self.current_index = 0
+        self._loading_dir = False
 
         self.current_zip_obj = None
         self.current_zip_path = None
@@ -949,7 +956,7 @@ class ComicReader(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel(UI['labels_file_list'])
         self.tree.itemClicked.connect(self.on_item_clicked)
-        self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        # self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
@@ -1309,12 +1316,20 @@ class ComicReader(QMainWindow):
         QMessageBox.information(self, about_title, help_html)
 
     def select_directory(self):
+        if getattr(self, "_loading_dir", False):
+            return
+        
         dir_path = QFileDialog.getExistingDirectory(self, UI['buttons_open_folder_tooltip'])
         if dir_path:
             self.current_dir = Path(dir_path).resolve()
             self.load_directory()
 
     def load_directory(self):
+        if getattr(self, "_loading_dir", False):
+            return
+        
+        self._loading_dir = True
+        
         try:
             try:
                 self.tree.setUpdatesEnabled(False)
@@ -1430,6 +1445,7 @@ class ComicReader(QMainWindow):
                 self.tree.setUpdatesEnabled(True)
             except Exception:
                 pass
+            self._loading_dir = False
 
 
     def sort_key(self, path: Path):
@@ -1476,14 +1492,14 @@ class ComicReader(QMainWindow):
         except Exception:
             return natural_sort_key(str(path_or_entry))
 
-
-
     def on_item_clicked(self, item, column):
+        if getattr(self, "_loading_dir", False):
+            return
+
         data = item.data(0, Qt.UserRole)
         if data is None:
             return
 
-        # dir
         if isinstance(data, str) and data.startswith("dir://"):
             try:
                 target_dir = Path(str(data[6:])).resolve()
@@ -1494,7 +1510,22 @@ class ComicReader(QMainWindow):
                 pass
             return
 
-        # zip
+        try:
+            if isinstance(data, str) and is_archive_path_str(data):
+                zip_path = Path(data)
+                self.extract_zip_to_tree(item, zip_path)
+                return
+        except Exception:
+            pass
+
+        try:
+            if isinstance(data, str) and is_pdf_path_str(data):
+                pdf_path = Path(data)
+                self.extract_pdf_to_tree(item, pdf_path)
+                return
+        except Exception:
+            pass
+
         if isinstance(data, str) and data.startswith("zip://"):
             self.load_image(data)
             before_last, _ = data.rsplit(":", 1)
@@ -1508,7 +1539,6 @@ class ComicReader(QMainWindow):
                     self.current_index = 0
             return
 
-        # pdf
         if isinstance(data, str) and data.startswith("pdf://"):
             self.load_image(data)
             before_last, _ = data.rsplit(":", 1)
@@ -1522,7 +1552,6 @@ class ComicReader(QMainWindow):
                     self.current_index = 0
             return
 
-        # image file
         try:
             file_path = Path(str(data))
         except Exception:
@@ -1550,28 +1579,6 @@ class ComicReader(QMainWindow):
                 self.current_pdf_obj = None
                 self.current_pdf_path = None
 
-    def on_item_double_clicked(self, item, column):
-        data = item.data(0, Qt.UserRole)
-        if not data:
-            return
-
-        if isinstance(data, str) and data.startswith("dir://"):
-            try:
-                target_dir = Path(str(data[6:])).resolve()
-                if target_dir.exists() and target_dir.is_dir():
-                    self.current_dir = target_dir
-                    self.load_directory()
-            except Exception:
-                pass
-            return
-
-        if is_archive_path_str(data):
-            zip_path = Path(data)
-            self.extract_zip_to_tree(item, zip_path)
-            
-        elif is_pdf_path_str(data):
-            pdf_path = Path(data)
-            self.extract_pdf_to_tree(item, pdf_path)
 
     def extract_pdf_to_tree(self, parent_item, pdf_path: Path):
         try:
