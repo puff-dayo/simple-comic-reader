@@ -19,8 +19,9 @@ import fitz
 import pymupdf
 import collections
 
-version = pymupdf.mupdf_version
+MUPDF_VERSION = pymupdf.mupdf_version
 
+APP_VERSION = "1.1"
 
 def is_archive_ext(ext: str) -> bool:
     if not ext:
@@ -79,11 +80,6 @@ UI_JSON = {
       "zh": "简单漫画阅读器",
       "en": "Simple Comic Reader",
       "ru": "Простой просмотрщик комиксов"
-    },
-    "version": {
-      "zh": "版本：1.0.0 (2025)",
-      "en": "Version: 1.0.0 (2025)",
-      "ru": "Версия: 1.0.0 (2025)"
     },
     "about_owner": {
       "zh": "开发者：Setsuna (github@puffdayo)",
@@ -257,14 +253,14 @@ UI_JSON = {
   "dialogs": {
     "help_html": {
       "zh": "<h3>📖 简单漫画阅读器</h3>\n"
-            "<p><b>版本：</b> 1.0.0  (2025)</p>\n"
+            f"<p><b>版本：</b> {APP_VERSION}</p>\n"
             "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
             "<p><b>使用说明：</b></p>\n"
             "<ul>\n"
             "<li><b>← / →</b>：上一页 / 下一页</li>\n"
-            "<li><b>↑ / ↓</b>：上一个 / 下一个压缩包</li>\n            "
-            "<li><b>双击 ZIP 文件</b>：展开查看内部图片</li>\n"
+            "<li><b>↑ / ↓</b>：上一个 / 下一个压缩包</li>\n"
+            "<li><b>双击支持的文件</b>：展开查看或打开支持的文件</li>\n"
             "<li><b>右键</b>：显示操作功能选项 </li>\n"
             "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
             "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
@@ -274,17 +270,23 @@ UI_JSON = {
             "<li><b>隐藏文件面板：</b> 通过右键菜单或拖拽左右中间的分隔线至最左</li>\n"
             "<li><b>显示文件面板：</b> 通过右键菜单或从最左边缘拖拽分隔线向右</li>\n"
             "</ul>\n"
+            "<h4>支持的文件类型</h4>\n"
+            "<ul>\n"
+            "<li>图片：.jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>压缩包：.zip, .cbz（双击可展开查看内部图片）</li>\n"
+            "<li>PDF 文档：.pdf（逐页查看）</li>\n"
+            "</ul>\n"
             "<hr>\n"
             "<p>程序记忆设置到 <code>config.ini</code> 文件中。</p>",
       "en": "<h3>📖 Simple Comic Reader</h3>\n"
-            "<p><b>Version:</b> 1.0.0 (2025)</p>\n"
+            f"<p><b>Version:</b> {APP_VERSION}</p>\n"
             "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
             "<p><b>Usage:</b></p>\n"
             "<ul>\n"
             "<li><b>← / →</b>: Previous / Next page</li>\n"
             "<li><b>↑ / ↓</b>: Previous / Next archive</li>\n"
-            "<li><b>Double-click ZIP</b>: Expand and view contained images</li>\n"
+            "<li><b>Double-click supported files</b>: Expand or open supported files</li>\n    "
             "<li><b>Right-click</b>: Show action menu</li>\n"
             "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
             "<li><b>Wheel:</b> Pan when image exceeds window</li>\n"
@@ -294,17 +296,23 @@ UI_JSON = {
             "<li><b>Hide file panel:</b> Use context menu or drag splitter left</li>\n"
             "<li><b>Show file panel:</b> Drag splitter right from far left</li>\n"
             "</ul>\n"
+            "<h4>Supported file types</h4>\n"
+            "<ul>\n"
+            "<li>Images: .jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>Archives: .zip, .cbz (double-click to expand and view contained images)</li>\n"
+            "<li>PDF: .pdf (view page-by-page)</li>\n"
+            "</ul>\n"
             "<hr>\n"
             "<p>Program stores settings to <code>config.ini</code>.</p>",
       "ru": "<h3>📖 Простой просмотрщик комиксов</h3>\n"
-            "<p><b>Версия:</b> 1.0.0 (2025)</p>\n"
+            f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
             "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
             "<hr>\n"
             "<p><b>Инструкция:</b></p>\n"
             "<ul>\n"
             "<li><b>← / →</b>: Предыдущая / Следующая страница</li>\n"
             "<li><b>↑ / ↓</b>: Предыдущий / Следующий архив</li>\n"
-            "<li><b>Двойной клик по ZIP</b>: Открыть и просмотреть файлы внутри</li>\n"
+            "<li><b>Двойной клик по поддерживаемым файлам</b>: открыть или развернуть поддерживаемые файлы</li>\n"
             "<li><b>Правый клик</b>: Показать меню действий</li>\n"
             "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
             "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
@@ -313,6 +321,12 @@ UI_JSON = {
             "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
             "<li><b>Скрыть панель файлов:</b> Через контекстное меню или переместить разделитель влево</li>\n"
             "<li><b>Показать панель файлов:</b> Переместить разделитель вправо от самого левого края</li>\n"
+            "</ul>\n"
+            "<h4>Поддерживаемые типы файлов</h4>\n"
+            "<ul>\n"
+            "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp</li>\n"
+            "<li>Архивы: .zip, .cbz (двойной клик — раскрыть и просмотреть файлы внутри)</li>\n"
+            "<li>PDF: .pdf (просмотр по страницам)</li>\n"
             "</ul>\n"
             "<hr>\n"
             "<p>Программа сохраняет настройки в файле <code>config.ini</code>.</p>"
@@ -1248,22 +1262,57 @@ class ComicReader(QMainWindow):
             self.load_directory()
 
     def load_directory(self):
-        self.tree.clear()
-        self.virtual_items.clear()
-        items = []
+        try:
+            self.tree.clear()
+            self.virtual_items.clear()
+            items = []
 
-        for file_path in sorted(self.current_dir.iterdir(), key=self.sort_key):
-            if file_path.is_file():
+            cur = self.current_dir.resolve() if self.current_dir else Path.cwd().resolve()
+            # ../
+            parent = cur.parent if cur.parent != cur else None
+            if parent and parent.exists():
+                parent_item = QTreeWidgetItem(["../"])
+                parent_item.setData(0, Qt.UserRole, f"dir://{str(parent)}")
+                parent_item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
+                items.append(parent_item)
+
+            dirs = []
+            files = []
+            for file_path in sorted(cur.iterdir(), key=self.sort_key):
+                try:
+                    if file_path.is_dir():
+                        dirs.append(file_path)
+                    elif file_path.is_file():
+                        ext = file_path.suffix.lower()
+                        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} or is_archive_ext(ext) or is_pdf_ext(ext):
+                            files.append(file_path)
+                except Exception:
+                    continue
+
+            for d in dirs:
+                item = QTreeWidgetItem([d.name])
+                item.setData(0, Qt.UserRole, f"dir://{str(d.resolve())}")
+                item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
+                items.append(item)
+
+            for file_path in files:
+                item = QTreeWidgetItem([file_path.name])
+                item.setData(0, Qt.UserRole, str(file_path.resolve()))
                 ext = file_path.suffix.lower()
-                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} or is_archive_ext(ext) or is_pdf_ext(ext):
-                    item = QTreeWidgetItem([file_path.name])
-                    item.setData(0, Qt.UserRole, str(file_path.resolve()))
-                    if is_archive_ext(ext) or is_pdf_ext(ext):
-                        item.setIcon(0, get_icon_for_file(file_path))
-                    else:
-                        item.setText(0, file_path.stem)
-                    items.append(item)
-        self.tree.insertTopLevelItems(0, items)
+                if is_archive_ext(ext) or is_pdf_ext(ext):
+                    item.setIcon(0, get_icon_for_file(file_path))
+                else:
+                    item.setText(0, file_path.stem)
+                items.append(item)
+
+            if items:
+                self.tree.insertTopLevelItems(0, items)
+            else:
+                pass
+
+            self.current_dir = cur
+        except Exception as e:
+            QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
     def sort_key(self, path: Path):
         if self.sort_by_date:
@@ -1273,6 +1322,17 @@ class ComicReader(QMainWindow):
     def on_item_clicked(self, item, column):
         data = item.data(0, Qt.UserRole)
         if data is None:
+            return
+
+        # dir
+        if isinstance(data, str) and data.startswith("dir://"):
+            try:
+                target_dir = Path(str(data[6:])).resolve()
+                if target_dir.exists() and target_dir.is_dir():
+                    self.current_dir = target_dir
+                    self.load_directory()
+            except Exception:
+                pass
             return
 
         # zip
@@ -1331,19 +1391,28 @@ class ComicReader(QMainWindow):
                 self.current_pdf_obj = None
                 self.current_pdf_path = None
 
-
     def on_item_double_clicked(self, item, column):
         data = item.data(0, Qt.UserRole)
         if not data:
             return
 
+        if isinstance(data, str) and data.startswith("dir://"):
+            try:
+                target_dir = Path(str(data[6:])).resolve()
+                if target_dir.exists() and target_dir.is_dir():
+                    self.current_dir = target_dir
+                    self.load_directory()
+            except Exception:
+                pass
+            return
+
         if is_archive_path_str(data):
             zip_path = Path(data)
             self.extract_zip_to_tree(item, zip_path)
+            
         elif is_pdf_path_str(data):
             pdf_path = Path(data)
             self.extract_pdf_to_tree(item, pdf_path)
-
 
     def extract_pdf_to_tree(self, parent_item, pdf_path: Path):
         try:
