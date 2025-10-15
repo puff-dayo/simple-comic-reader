@@ -52,151 +52,185 @@ UI_JSON = {
   "app": {
     "window_title": {
       "zh": "简单漫画阅读器",
-      "en": "Simple Comic Reader"
+      "en": "Simple Comic Reader",
+      "ru": "Простой просмотрщик комиксов"
     },
     "version": {
       "zh": "版本：1.0.0 (2025)",
-      "en": "Version: 1.0.0 (2025)"
+      "en": "Version: 1.0.0 (2025)",
+      "ru": "Версия: 1.0.0 (2025)"
     },
     "about_owner": {
       "zh": "开发者：Setsuna (github@puffdayo)",
-      "en": "Developer: Setsuna (github@puffdayo)"
+      "en": "Developer: Setsuna (github@puffdayo)",
+      "ru": "Разработчик: Setsuna (github@puffdayo)"
     }
   },
   "buttons": {
     "open_folder": {
       "zh": "📁",
-      "en": "📁"
+      "en": "📁",
+      "ru": "📁"
     },
     "open_folder_tooltip": {
       "zh": "打开文件夹",
-      "en": "Open folder"
+      "en": "Open folder",
+      "ru": "Открыть папку"
     },
     "help": {
       "zh": "❔",
-      "en": "❔"
+      "en": "❔",
+      "ru": "❔"
     },
     "help_tooltip": {
       "zh": "查看帮助",
-      "en": "Open help"
+      "en": "Open help",
+      "ru": "Открыть справку"
     },
     "settings": {
       "zh": "⚙️",
-      "en": "⚙️"
+      "en": "⚙️",
+      "ru": "⚙️"
     },
     "settings_tooltip": {
       "zh": "打开设置面板",
-      "en": "Open settings"
+      "en": "Open settings",
+      "ru": "Открыть настройки"
     },
     "fullscreen": {
       "zh": "⛶",
-      "en": "⛶"
+      "en": "⛶",
+      "ru": "⛶"
     },
     "fullscreen_tooltip": {
       "zh": "切换全屏 (F11)",
-      "en": "Toggle fullscreen (F11)"
+      "en": "Toggle fullscreen (F11)",
+      "ru": "Переключить полноэкранный режим (F11)"
     },
     "close_all": {
       "zh": "🧹",
-      "en": "🧹"
+      "en": "🧹",
+      "ru": "🧹"
     },
     "close_all_tooltip": {
       "zh": "关闭所有已打开的压缩包",
-      "en": "Close all opened archives"
+      "en": "Close all opened archives",
+      "ru": "Закрыть все открытые архивы"
     },
     "choose": {
       "zh": "选择...",
-      "en": "Choose..."
+      "en": "Choose...",
+      "ru": "Выбрать..."
     },
     "choose_color": {
       "zh": "选择颜色",
-      "en": "Choose color"
+      "en": "Choose color",
+      "ru": "Выбрать цвет"
     },
     "save": {
       "zh": "保存",
-      "en": "Save"
+      "en": "Save",
+      "ru": "Сохранить"
     },
     "cancel": {
       "zh": "取消",
-      "en": "Cancel"
+      "en": "Cancel",
+      "ru": "Отмена"
     }
   },
   "labels": {
     "file_list": {
       "zh": "文件列表",
-      "en": "File list"
+      "en": "File list",
+      "ru": "Список файлов"
     },
     "auto_open_dir": {
       "zh": "自动打开目录：",
-      "en": "Auto-open directory:"
+      "en": "Auto-open directory:",
+      "ru": "Каталог для автозагрузки:"
     },
     "bg_color": {
       "zh": "背景颜色 (#RRGGBB)：",
-      "en": "Background color (#RRGGBB):"
+      "en": "Background color (#RRGGBB):",
+      "ru": "Цвет фона (#RRGGBB):"
     },
     "default_fit": {
       "zh": "默认图像适配：",
-      "en": "Default image fit:"
+      "en": "Default image fit:",
+      "ru": "Режим масштабирования по умолчанию:"
     },
     "auto_dir_placeholder": {
       "zh": "启动时自动进入",
-      "en": "Directory to open on startup"
+      "en": "Directory to open on startup",
+      "ru": "Каталог, открываемый при старте"
     },
     "scale_combo": {
       "zh": "缩放模式选择",
-      "en": "Scale mode"
+      "en": "Scale mode",
+      "ru": "Режим масштабирования"
     },
     "image_placeholder": {
       "zh": "选择图片查看",
-      "en": "Select an image to view"
+      "en": "Select an image to view",
+      "ru": "Выберите изображение для просмотра"
     }
   },
   "scale_options": {
     "fit_page": {
       "zh": "适应全页",
-      "en": "Fit page"
+      "en": "Fit page",
+      "ru": "По странице"
     },
     "fit_height": {
       "zh": "适应高",
-      "en": "Fit height"
+      "en": "Fit height",
+      "ru": "По высоте"
     },
     "fit_width": {
       "zh": "适应宽",
-      "en": "Fit width"
+      "en": "Fit width",
+      "ru": "По ширине"
     },
     "custom_percent": {
       "zh": "自定义 (%)",
-      "en": "Custom (%)"
+      "en": "Custom (%)",
+      "ru": "Пользовательский (%)"
     }
   },
   "shortcuts": {
     "prev_page": {
       "zh": "上一页",
-      "en": "Previous page"
+      "en": "Previous page",
+      "ru": "Предыдущая страница"
     },
     "next_page": {
       "zh": "下一页",
-      "en": "Next page"
+      "en": "Next page",
+      "ru": "Следующая страница"
     },
     "prev_archive": {
       "zh": "上一个压缩包",
-      "en": "Previous archive"
+      "en": "Previous archive",
+      "ru": "Предыдущий архив"
     },
     "next_archive": {
       "zh": "下一个压缩包",
-      "en": "Next archive"
+      "en": "Next archive",
+      "ru": "Следующий архив"
     },
     "reset_zoom": {
       "zh": "重置缩放",
-      "en": "Reset zoom"
+      "en": "Reset zoom",
+      "ru": "Сбросить масштаб"
     },
     "set_100": {
       "zh": "设为 100%",
-      "en": "Set to 100%"
+      "en": "Set to 100%",
+      "ru": "Установить 100%"
     }
   },
   "dialogs": {
-        "help_html": {
+    "help_html": {
       "zh": "<h3>📖 简单漫画阅读器</h3>\n"
             "<p><b>版本：</b> 1.0.0  (2025)</p>\n"
             "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
@@ -236,154 +270,254 @@ UI_JSON = {
             "<li><b>Show file panel:</b> Drag splitter right from far left</li>\n"
             "</ul>\n"
             "<hr>\n"
-            "<p>Program stores settings to <code>config.ini</code>.</p>"
+            "<p>Program stores settings to <code>config.ini</code>.</p>",
+      "ru": "<h3>📖 Простой просмотрщик комиксов</h3>\n"
+            "<p><b>Версия:</b> 1.0.0 (2025)</p>\n"
+            "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
+            "<hr>\n"
+            "<p><b>Инструкция:</b></p>\n"
+            "<ul>\n"
+            "<li><b>← / →</b>: Предыдущая / Следующая страница</li>\n"
+            "<li><b>↑ / ↓</b>: Предыдущий / Следующий архив</li>\n"
+            "<li><b>Двойной клик по ZIP</b>: Открыть и просмотреть файлы внутри</li>\n"
+            "<li><b>Правый клик</b>: Показать меню действий</li>\n"
+            "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
+            "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
+            "<li><b>Ctrl + Колесо:</b> Быстрое изменение масштаба (±10% за шаг)</li>\n"
+            "<li><b>Клики по краям:</b> Нажатие слева/справа для перелистывания</li>\n"
+            "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
+            "<li><b>Скрыть панель файлов:</b> Через контекстное меню или переместить разделитель влево</li>\n"
+            "<li><b>Показать панель файлов:</b> Переместить разделитель вправо от самого левого края</li>\n"
+            "</ul>\n"
+            "<hr>\n"
+            "<p>Программа сохраняет настройки в файле <code>config.ini</code>.</p>"
     },
     "settings_title": {
       "zh": "设置",
-      "en": "Settings"
+      "en": "Settings",
+      "ru": "Настройки"
     },
     "about_title": {
       "zh": "关于 简单漫画阅读器",
-      "en": "About Simple Comic Reader"
+      "en": "About Simple Comic Reader",
+      "ru": "О Программе"
     },
     "help_title": {
       "zh": "帮助",
-      "en": "Help"
+      "en": "Help",
+      "ru": "Справка"
     },
     "info_saved": {
       "zh": "设置已保存",
-      "en": "Settings saved"
+      "en": "Settings saved",
+      "ru": "Настройки сохранены"
     },
     "info_saved_details": {
       "zh": "设置已保存并应用。",
-      "en": "Settings have been saved and applied."
+      "en": "Settings have been saved and applied.",
+      "ru": "Настройки сохранены и применены."
     },
     "info_close_archives": {
       "zh": "所有已打开的压缩包已关闭。",
-      "en": "All opened archives have been closed."
+      "en": "All opened archives have been closed.",
+      "ru": "Все открытые архивы закрыты."
     },
     "warning_zip_failed": {
       "zh": "解压失败: {error}",
-      "en": "Failed to extract: {error}"
+      "en": "Failed to extract: {error}",
+      "ru": "Не удалось распаковать: {error}"
     },
     "warning_load_failed": {
       "zh": "加载图片失败: {error}",
-      "en": "Failed to load image: {error}"
+      "en": "Failed to load image: {error}",
+      "ru": "Не удалось загрузить изображение: {error}"
     },
     "warning_save_failed": {
       "zh": "保存设置失败: {error}",
-      "en": "Failed to save settings: {error}"
+      "en": "Failed to save settings: {error}",
+      "ru": "Не удалось сохранить настройки: {error}"
     },
     "info_clipboard_empty": {
       "zh": "当前没有可复制的图片。",
-      "en": "No image available to copy."
+      "en": "No image available to copy.",
+      "ru": "Нет изображения для копирования."
     },
     "info_copied": {
       "zh": "图片已复制到剪贴板。",
-      "en": "Image copied to clipboard."
+      "en": "Image copied to clipboard.",
+      "ru": "Изображение скопировано в буфер обмена."
     }
   },
   "context_menu": {
     "copy_image": {
       "zh": "复制图片",
-      "en": "Copy image"
+      "en": "Copy image",
+      "ru": "Копировать изображение"
     },
     "show_hide_file_panel": {
       "zh": "显隐文件面板",
-      "en": "Toggle file panel"
+      "en": "Toggle file panel",
+      "ru": "Показать/скрыть панель файлов"
     },
     "fit_page": {
       "zh": "适应全页",
-      "en": "Fit page"
+      "en": "Fit page",
+      "ru": "По странице"
     },
     "fit_height": {
       "zh": "适应高",
-      "en": "Fit height"
+      "en": "Fit height",
+      "ru": "По высоте"
     },
     "fit_width": {
       "zh": "适应宽",
-      "en": "Fit width"
+      "en": "Fit width",
+      "ru": "По ширине"
     },
     "reset_zoom": {
       "zh": "重置缩放",
-      "en": "Reset zoom"
+      "en": "Reset zoom",
+      "ru": "Сбросить масштаб"
     },
     "percent_options": {
       "zh": "百分比：50%, 75%, 100%, 125%, 150%, 200%",
-      "en": "Percent options: 50%, 75%, 100%, 125%, 150%, 200%"
+      "en": "Percent options: 50%, 75%, 100%, 125%, 150%, 200%",
+      "ru": "Проценты: 50%, 75%, 100%, 125%, 150%, 200%"
     },
     "previous": {
       "zh": "上一页",
-      "en": "Previous"
+      "en": "Previous",
+      "ru": "Предыдущая"
     },
     "next": {
       "zh": "下一页",
-      "en": "Next"
+      "en": "Next",
+      "ru": "Следующая"
     },
     "sort_by_date": {
       "zh": "按日期排序",
-      "en": "Sort by date"
+      "en": "Sort by date",
+      "ru": "Сортировать по дате"
     }
   },
   "tree": {
     "expand_zip_prefix": {
       "zh": "展开: ",
-      "en": "Expanded: "
+      "en": "Expanded: ",
+      "ru": "Открыто: "
     },
     "zip_icon_tooltip": {
       "zh": "双击 ZIP 文件：展开查看内部图片",
-      "en": "Double-click ZIP to expand and view contained images"
+      "en": "Double-click ZIP to expand and view contained images",
+      "ru": "Двойной клик по ZIP — открыть и просмотреть файлы внутри"
     }
   },
   "edge_click": {
     "left_area_tooltip": {
       "zh": "点击左侧翻页（上一页）",
-      "en": "Click left edge to go to previous page"
+      "en": "Click left edge to go to previous page",
+      "ru": "Клик слева — предыдущая страница"
     },
     "right_area_tooltip": {
       "zh": "点击右侧翻页（下一页）",
-      "en": "Click right edge to go to next page"
+      "en": "Click right edge to go to next page",
+      "ru": "Клик справа — следующая страница"
     }
   },
   "messages": {
     "no_selection": {
       "zh": "未选择任何文件",
-      "en": "No file selected"
+      "en": "No file selected",
+      "ru": "Файл не выбран"
     },
     "invalid_color": {
       "zh": "无效的颜色值，使用默认背景。",
-      "en": "Invalid color value, using default background."
+      "en": "Invalid color value, using default background.",
+      "ru": "Недопустимое значение цвета, используется фон по умолчанию."
     },
     "config_written_default": {
       "zh": "已写入默认配置到 config.ini",
-      "en": "Default configuration written to config.ini"
+      "en": "Default configuration written to config.ini",
+      "ru": "Файл config.ini создан с настройками по умолчанию"
     }
   },
   "placeholders_and_helpers": {
     "help_usage_shortcuts": {
       "zh": "← / →：上一页 / 下一页；↑ / ↓：上一个 / 下一个压缩包；F11：全屏",
-      "en": "← / →: prev/next page; ↑ / ↓: prev/next archive; F11: fullscreen"
+      "en": "← / →: prev/next page; ↑ / ↓: prev/next archive; F11: fullscreen",
+      "ru": "← / →: предыдущая/следующая страница; ↑ / ↓: предыдущий/следующий архив; F11: полноэкранный"
     },
     "help_note": {
       "zh": "程序记忆设置到 config.ini 文件中。",
-      "en": "Program stores settings in config.ini."
+      "en": "Program stores settings in config.ini.",
+      "ru": "Программа сохраняет настройки в config.ini."
     }
   }
 }
 
 def get_system_lang():
-    system_lang = QLocale.system().name()
-    return "zh" if system_lang.startswith("zh") else "en"
+    loc = QLocale.system()
+
+    primary = ""
+    try:
+        if hasattr(loc, "uiLanguages"):
+            langs = loc.uiLanguages()
+            if langs:
+                primary = langs[0].split("-")[0].lower()
+    except Exception:
+        primary = ""
+
+    if not primary:
+        try:
+            name = loc.name() or ""
+            primary = name.split("_")[0].lower()
+        except Exception:
+            primary = ""
+
+    if not primary:
+        try:
+            lang_enum = loc.language()
+            if lang_enum == QLocale.Chinese:
+                primary = "zh"
+            elif lang_enum == QLocale.Russian:
+                primary = "ru"
+            elif lang_enum == QLocale.English:
+                primary = "en"
+        except Exception:
+            primary = ""
+
+    if primary.startswith("zh"):
+        return "zh"
+    if primary.startswith("ru"):
+        return "ru"
+    if primary.startswith("en"):
+        return "en"
+    return "en"
+
 
 lang = get_system_lang()
 
 def load_lang_from_JSON(lang):
     flat_ui = {}
 
+    def is_translation_node(node):
+        if not isinstance(node, dict):
+            return False
+        return all(isinstance(v, str) for v in node.values())
+
+    def choose_translation(node_dict):
+        for key in (lang, "ru", "zh", "en"):
+            if key and key in node_dict and isinstance(node_dict[key], str):
+                return node_dict[key]
+        for v in node_dict.values():
+            if isinstance(v, str):
+                return v
+        return ""
+
     def recurse(prefix, node):
         if isinstance(node, dict):
-            if all(k in node for k in ("zh", "en")):
-                flat_ui[prefix] = node.get(lang, next(iter(node.values())))
+            if is_translation_node(node):
+                flat_ui[prefix] = choose_translation(node)
             else:
                 for k, v in node.items():
                     new_prefix = f"{prefix}_{k}" if prefix else k
@@ -393,7 +527,11 @@ def load_lang_from_JSON(lang):
 
     recurse("", UI_JSON)
     return flat_ui
-UI = load_lang_from_JSON(lang)
+
+# UI = load_lang_from_JSON(lang)
+
+UI = load_lang_from_JSON("ru")
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, config=None):
