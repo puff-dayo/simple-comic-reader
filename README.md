@@ -5,6 +5,8 @@
 A lightweight, comic and image reader built with Qt for Python.  
 Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fullscreen capabilities.
 
+<img width="480" height="auto" alt="" src="https://github.com/user-attachments/assets/d0b6900f-ef79-4788-b3e5-e707ecb1dd49" />
+
 ---
 
 ## Features
