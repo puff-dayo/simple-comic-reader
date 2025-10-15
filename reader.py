@@ -49,9 +49,31 @@ def is_pdf_protocol(s: str) -> bool:
         return False
     
 icon_provider = QFileIconProvider()
+_icon_cache = {}
+
+def clear_icon_cache():
+    global _icon_cache
+    _icon_cache = {}
 
 def get_icon_for_file(path: Path):
-    return icon_provider.icon(QFileInfo(str(path)))
+    try:
+        ext = (path.suffix or "").lower()
+    except Exception:
+        ext = ""
+
+    if ext in _icon_cache:
+        return _icon_cache[ext]
+
+    try:
+        qi = QFileInfo(str(path))
+        icon = icon_provider.icon(qi)
+        if icon is None:
+            icon = QIcon()
+    except Exception:
+        icon = QIcon()
+
+    _icon_cache[ext] = icon
+    return icon
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
