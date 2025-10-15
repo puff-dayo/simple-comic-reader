@@ -89,17 +89,32 @@ wheels = [
 
 [[package]]
 name = "pymupdf"
-version = "1.26.5"
+version = "1.23.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8d/9a/e0a4e92a85fc17be7c54afdbb113f0ade2a8bca49856d510e28bd249e462/pymupdf-1.26.5.tar.gz", hash = "sha256:8ef335e07f648492df240f2247854d0e7c0467afb9c4dc2376ec30978ec158c3", size = 84319274 }
+dependencies = [
+    { name = "pymupdfb" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/03/f1/66ca2235465eac566837a37b4a8daa386120e051092fc468cb6bb4459a1a/PyMuPDF-1.23.5.tar.gz", hash = "sha256:4508ee04c46cac8356a9d04f0d9a63f845770d2abb54caf512b44d22f0e80300", size = 62016188 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/3f/7fc927fd66922ce838d4c974ff9a685c5f5aba108a5d94914dc05c9371f5/pymupdf-1.26.5-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2bfb58f07ad631e5f71ad0bd6f1ff52700f7ba7ebb4973130e81e75b721beae1", size = 23065601 },
-    { url = "https://files.pythonhosted.org/packages/c1/e2/e87e62284ba98d59f1fd4fc7542ef2ed0002525754a485fa4077b3bbddae/pymupdf-1.26.5-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:d58599479bc471d3ae56c3d68d9160d0b7de8a3bd40221ddc3a4eaae2d281b86", size = 22412612 },
-    { url = "https://files.pythonhosted.org/packages/df/c2/af93c6367f79e9b5435f803bde51c1dc8225f054f8238162dda80b44986d/pymupdf-1.26.5-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:7dfea81fdd73437a6a6ce83e1fcf556faee9327a6540571e58bf04fa362bb0cd", size = 23457410 },
-    { url = "https://files.pythonhosted.org/packages/5b/5a/1292a0df4ff71fbc00dfa8c08759d17c97e1e8ea9277eb5bc5f079ca188d/pymupdf-1.26.5-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:caad0ffeb63dcc4a29ca40f3c68d7b78d32a932e834b0056b529cc0bdbaaffc9", size = 24064941 },
-    { url = "https://files.pythonhosted.org/packages/28/90/87b7fdfc9cd6991a3eb69a5752f6343374c34f258c511c242f4d60791eea/pymupdf-1.26.5-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e24e7a7d696bd398543cc5c147869edb2026d5d5a21b7f8e35db2f20170b389e", size = 24268203 },
-    { url = "https://files.pythonhosted.org/packages/2c/99/9d4b36485538e29df0a013fb02bbf6b5b0743a428fa07515e36631c43363/pymupdf-1.26.5-cp39-abi3-win32.whl", hash = "sha256:a2a42f5911d153a47bf5c3e162a0bfe8745eb9bec3e59fbaf87617b4003d8270", size = 17130722 },
-    { url = "https://files.pythonhosted.org/packages/c6/96/fd59c1532891762ea4815e73956c532053d5e26d56969e1e5d1e4ca4b207/pymupdf-1.26.5-cp39-abi3-win_amd64.whl", hash = "sha256:39a6fb58182b27b51ea8150a0cd2e4ee7e0cf71e9d6723978f28699b42ee61ae", size = 18747258 },
+    { url = "https://files.pythonhosted.org/packages/a4/76/84212b0cbe45a77ac71e8b7a13718463c39680e5b0c69dbb7b09bbf62e6b/PyMuPDF-1.23.5-cp312-none-macosx_10_9_x86_64.whl", hash = "sha256:64ab1097e3a077ae9db6a98d01e2e77087894ebd85b702edf5eb85d05ab8c0f1", size = 4135876 },
+    { url = "https://files.pythonhosted.org/packages/d9/15/142ed4a02ca63c0dba2b84cd3e6a8e2cc663dc82453aa3800a96a2fe2c6a/PyMuPDF-1.23.5-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:f7a8f91681b88ad216c36911e08ea25d2b3121350d52f4f8d76aeb0b7fcc6bef", size = 3665283 },
+    { url = "https://files.pythonhosted.org/packages/a7/ff/5afb8c9ede64d36e096eac211049da8f408d3357023e7a73249c96814d70/PyMuPDF-1.23.5-cp312-none-manylinux2014_aarch64.whl", hash = "sha256:bb345ef1120db4f78ec0f229514d333ea3e7d367875c1400423a9b3e2b48ffc0", size = 3791694 },
+    { url = "https://files.pythonhosted.org/packages/1c/9b/ad383fe1949b5925b903ff57bd915dd6e3479c8229f16942f22324e393d4/PyMuPDF-1.23.5-cp312-none-manylinux2014_x86_64.whl", hash = "sha256:9bde3683e254661e6b0032006f0ef7025ade2a33d3e3045499e71b76ea99942c", size = 4296559 },
+    { url = "https://files.pythonhosted.org/packages/ce/57/fea837cbec135e4a93cd7f932045d6114338edb18c50ea0357f604e9ea30/PyMuPDF-1.23.5-cp312-none-win32.whl", hash = "sha256:3a01c93c69e74068c1618631a750677fd088708d2b09b3c23809b099fa4ffa39", size = 3236103 },
+    { url = "https://files.pythonhosted.org/packages/c0/5e/3771adefbf1167ace230c387a3e43a37b1776646678752126b7032e062ea/PyMuPDF-1.23.5-cp312-none-win_amd64.whl", hash = "sha256:693979ad4c8885729ac126b3202f1cb645f3392ad7e0964c2d924e61bc0e0a9d", size = 3472002 },
+]
+
+[[package]]
+name = "pymupdfb"
+version = "1.23.5"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/2c/d3b7c257e1e698de971f64e826865e73633da1390b6b72c6a8d5f347fa4d/PyMuPDFb-1.23.5-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:d0095f28b2bcd64ed8a9636dfba193108eeb6c24d0ec71fa3f88cb15aee67a30", size = 30133203 },
+    { url = "https://files.pythonhosted.org/packages/fc/46/0ee66588ada2c1c0ebabc1079ac8f13a29d5cc07e0f02ad7d0aa830cef88/PyMuPDFb-1.23.5-py3-none-macosx_11_0_arm64.whl", hash = "sha256:80137c37a4b0d5abeb988434c7d7eb3f9087afdd0754f4bf2f8840a788e691ae", size = 29348791 },
+    { url = "https://files.pythonhosted.org/packages/71/60/7ce2b60c394b0b7d67cec0fd10bb93ab7c76f0f93678c83f8356b6c12618/PyMuPDFb-1.23.5-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:e26705e1a4ea42926b70c5655f2509d555a4774d1d1382ecc7e76466695209e6", size = 30167982 },
+    { url = "https://files.pythonhosted.org/packages/cf/14/de59687368ad2c047b038b5b9b04e40bd5d486d5b36c6aef42c18c35ea2c/PyMuPDFb-1.23.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2b71b5b7987f2ebe9f6893544151ede2de74ec30651eef584039eb5f9c7c02aa", size = 30577236 },
+    { url = "https://files.pythonhosted.org/packages/43/aa/5cf650f29f5cb3959a5102dccdbf0d3d20de8f66dd6358a355be24602df3/PyMuPDFb-1.23.5-py3-none-win32.whl", hash = "sha256:f269814bafdffd5558d44af3de63eaa531d498de640a79cf6c7072011fd4088f", size = 21736826 },
+    { url = "https://files.pythonhosted.org/packages/cb/76/4eade1b24e1241431b35d6f955afdff2595bafc5a5da8f37fbe1059f989d/PyMuPDFb-1.23.5-py3-none-win_amd64.whl", hash = "sha256:85cbc308085a4ec794e0da790965985cc5ccb21b2abc09732e072f6eaf10150b", size = 24435843 },
 ]
 
 [[package]]
@@ -177,7 +192,7 @@ dependencies = [
 requires-dist = [
     { name = "nuitka", specifier = ">=2.8.1" },
     { name = "pillow", specifier = ">=11.3.0" },
-    { name = "pymupdf", specifier = ">=1.26.5" },
+    { name = "pymupdf", specifier = "==1.23.5" },
     { name = "pyside6", specifier = ">=6.10.0" },
 ]
 

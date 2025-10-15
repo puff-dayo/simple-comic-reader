@@ -46,7 +46,7 @@ Python 3.12+
 dependencies = [
     "nuitka>=2.8.1",
     "pillow>=11.3.0",
-    "pymupdf>=1.26.5",
+    "pymupdf==1.23.5",
     "pyside6>=6.10.0",
 ]
 ```

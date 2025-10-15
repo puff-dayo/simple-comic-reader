@@ -16,10 +16,7 @@ from PySide6.QtCore import (
     )
 
 import fitz
-import pymupdf
 import collections
-
-MUPDF_VERSION = pymupdf.mupdf_version
 
 APP_VERSION = "1.1"
 
