@@ -1270,13 +1270,13 @@ class ComicReader(QMainWindow):
             return path.stat().st_mtime
         return path.name.lower()
 
-
     def on_item_clicked(self, item, column):
         data = item.data(0, Qt.UserRole)
         if data is None:
             return
-        if isinstance(data, str) and data.startswith("zip://"):
 
+        # zip
+        if isinstance(data, str) and data.startswith("zip://"):
             self.load_image(data)
             before_last, _ = data.rsplit(":", 1)
             zip_path = Path(before_last[6:]).resolve()
@@ -1287,21 +1287,50 @@ class ComicReader(QMainWindow):
                     self.current_index = self.image_list.index(data)
                 except ValueError:
                     self.current_index = 0
-        else:
-            file_path = Path(data)
-            ext = file_path.suffix.lower()
-            if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}:
-                self.load_image(str(file_path))
-                self.image_list = [str(file_path)]
-                self.current_index = 0
+            return
 
-                if self.current_zip_obj is not None:
-                    try:
-                        self.current_zip_obj.close()
-                    except Exception:
-                        pass
-                    self.current_zip_obj = None
-                    self.current_zip_path = None
+        # pdf
+        if isinstance(data, str) and data.startswith("pdf://"):
+            self.load_image(data)
+            before_last, _ = data.rsplit(":", 1)
+            pdf_path = Path(before_last[6:]).resolve()
+            virtual_item = self.virtual_items.get(str(pdf_path))
+            if virtual_item:
+                self.image_list = [virtual_item.child(i).data(0, Qt.UserRole) for i in range(virtual_item.childCount())]
+                try:
+                    self.current_index = self.image_list.index(data)
+                except ValueError:
+                    self.current_index = 0
+            return
+
+        # image file
+        try:
+            file_path = Path(str(data))
+        except Exception:
+            return
+
+        ext = file_path.suffix.lower()
+        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} and file_path.exists():
+            self.load_image(str(file_path))
+            self.image_list = [str(file_path)]
+            self.current_index = 0
+
+            if self.current_zip_obj is not None:
+                try:
+                    self.current_zip_obj.close()
+                except Exception:
+                    pass
+                self.current_zip_obj = None
+                self.current_zip_path = None
+
+            if self.current_pdf_obj is not None:
+                try:
+                    self.current_pdf_obj.close()
+                except Exception:
+                    pass
+                self.current_pdf_obj = None
+                self.current_pdf_path = None
+
 
     def on_item_double_clicked(self, item, column):
         data = item.data(0, Qt.UserRole)
