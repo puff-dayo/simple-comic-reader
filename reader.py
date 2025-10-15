@@ -1000,6 +1000,37 @@ class ComicReader(QMainWindow):
             self.display_current_pixmap()
         except Exception:
             pass
+        
+    def _find_item_recursive(self, item: QTreeWidgetItem, target: str):
+        if item is None:
+            return None
+        data = item.data(0, Qt.UserRole)
+        try:
+            if data is not None and str(data) == target:
+                return item
+        except Exception:
+            pass
+        for i in range(item.childCount()):
+            child = item.child(i)
+            found = self._find_item_recursive(child, target)
+            if found:
+                return found
+        return None
+
+    def select_tree_item_for_path(self, image_path: str):
+        if not image_path:
+            return
+        target = str(image_path)
+        for i in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(i)
+            found = self._find_item_recursive(top, target)
+            if found:
+                self.tree.setCurrentItem(found)
+                try:
+                    self.tree.scrollToItem(found)
+                except Exception:
+                    pass
+                return
 
     def close_all_archives(self):
         try:
@@ -1316,6 +1347,11 @@ class ComicReader(QMainWindow):
                 pixmap = QPixmap(str(image_path))
                 self.current_pixmap = pixmap
                 self.display_current_pixmap()
+                
+            try:
+                self.select_tree_item_for_path(image_path)
+            except Exception:
+                pass
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
