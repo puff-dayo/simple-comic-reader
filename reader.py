@@ -18,6 +18,8 @@ from PySide6.QtCore import (
 import fitz
 import collections
 
+import re
+
 APP_VERSION = "1.1"
 
 def is_archive_ext(ext: str) -> bool:
@@ -47,6 +49,25 @@ def is_pdf_protocol(s: str) -> bool:
         return isinstance(s, str) and s.startswith("pdf://")
     except Exception:
         return False
+
+_num_re = re.compile(r'(\d+)')
+
+def natural_sort_key(s):
+    if isinstance(s, (Path, QFileInfo)):
+        try:
+            s = str(s)
+        except Exception:
+            s = s.name if hasattr(s, "name") else str(s)
+    s = str(s)
+    parts = _num_re.split(s)
+    key = []
+    for p in parts:
+        if p.isdigit():
+            key.append(int(p))
+        else:
+            key.append(p.lower())
+    return key
+
     
 icon_provider = QFileIconProvider()
 _icon_cache = {}
@@ -1295,61 +1316,166 @@ class ComicReader(QMainWindow):
 
     def load_directory(self):
         try:
+            try:
+                self.tree.setUpdatesEnabled(False)
+                self.tree.blockSignals(True)
+            except Exception:
+                pass
+
             self.tree.clear()
             self.virtual_items.clear()
             items = []
 
-            cur = self.current_dir.resolve() if self.current_dir else Path.cwd().resolve()
-            # ../
+            try:
+                cur = (self.current_dir.resolve() if self.current_dir else Path.cwd().resolve())
+            except Exception:
+                cur = Path.cwd().resolve()
+
             parent = cur.parent if cur.parent != cur else None
             if parent and parent.exists():
                 parent_item = QTreeWidgetItem(["../"])
-                parent_item.setData(0, Qt.UserRole, f"dir://{str(parent)}")
+                parent_item.setData(0, Qt.UserRole, f"dir://{str(parent.resolve())}")
                 parent_item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
                 items.append(parent_item)
 
-            dirs = []
-            files = []
-            for file_path in sorted(cur.iterdir(), key=self.sort_key):
+            entries = []
+            try:
+                with os.scandir(cur) as it:
+                    for de in it:
+                        try:
+                            if de.is_dir(follow_symlinks=False):
+                                entries.append(('d', de))
+                            elif de.is_file(follow_symlinks=False):
+                                name_lower = de.name.lower()
+                                if name_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) \
+                                or name_lower.endswith(('.zip', '.cbz', '.pdf')):
+                                    entries.append(('f', de))
+                        except Exception:
+                            continue
+            except Exception:
                 try:
-                    if file_path.is_dir():
-                        dirs.append(file_path)
-                    elif file_path.is_file():
-                        ext = file_path.suffix.lower()
-                        if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp'} or is_archive_ext(ext) or is_pdf_ext(ext):
-                            files.append(file_path)
+                    for p in sorted(cur.iterdir(), key=self.sort_key):
+                        try:
+                            if p.is_dir():
+                                entries.append(('d', p))
+                            elif p.is_file():
+                                ext = p.suffix.lower()
+                                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.zip', '.cbz', '.pdf'}:
+                                    entries.append(('f', p))
+                        except Exception:
+                            continue
+                except Exception:
+                    self.current_dir = cur
+                    return
+
+            try:
+                entries.sort(key=lambda t: self.sort_key(t[1]))
+            except Exception:
+                try:
+                    entries.sort(key=lambda t: (t[1].name if hasattr(t[1], "name") else str(t[1])).lower())
+                except Exception:
+                    pass
+
+            for typ, entry in entries:
+                try:
+                    if typ == 'd':
+                        name = entry.name if hasattr(entry, "name") else Path(entry).name
+                        try:
+                            path_str = str(Path(entry.path if hasattr(entry, "path") else entry).resolve())
+                        except Exception:
+                            path_str = str(Path(entry.path if hasattr(entry, "path") else entry))
+
+                        item = QTreeWidgetItem([name])
+                        item.setData(0, Qt.UserRole, f"dir://{path_str}")
+                        item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
+                        items.append(item)
+                    else:
+                        name = entry.name if hasattr(entry, "name") else Path(entry).name
+                        full_path = None
+                        if hasattr(entry, "path"):
+                            full_path = Path(entry.path)
+                        else:
+                            full_path = Path(entry)
+
+                        item = QTreeWidgetItem([name])
+                        item.setData(0, Qt.UserRole, str(full_path))
+                        ext = full_path.suffix.lower()
+                        if is_archive_ext(ext) or is_pdf_ext(ext):
+                            item.setIcon(0, get_icon_for_file(full_path))
+                        else:
+                            item.setText(0, full_path.stem)
+                        items.append(item)
                 except Exception:
                     continue
 
-            for d in dirs:
-                item = QTreeWidgetItem([d.name])
-                item.setData(0, Qt.UserRole, f"dir://{str(d.resolve())}")
-                item.setIcon(0, self.style().standardIcon(QStyle.SP_DirIcon))
-                items.append(item)
-
-            for file_path in files:
-                item = QTreeWidgetItem([file_path.name])
-                item.setData(0, Qt.UserRole, str(file_path.resolve()))
-                ext = file_path.suffix.lower()
-                if is_archive_ext(ext) or is_pdf_ext(ext):
-                    item.setIcon(0, get_icon_for_file(file_path))
-                else:
-                    item.setText(0, file_path.stem)
-                items.append(item)
-
             if items:
-                self.tree.insertTopLevelItems(0, items)
-            else:
-                pass
+                try:
+                    self.tree.insertTopLevelItems(0, items)
+                except Exception:
+                    for it in items:
+                        try:
+                            self.tree.addTopLevelItem(it)
+                        except Exception:
+                            pass
 
             self.current_dir = cur
+
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
+
+        finally:
+            try:
+                self.tree.blockSignals(False)
+                self.tree.setUpdatesEnabled(True)
+            except Exception:
+                pass
+
 
     def sort_key(self, path: Path):
         if self.sort_by_date:
             return path.stat().st_mtime
         return path.name.lower()
+    
+    def sort_key(self, path_or_entry):
+        try:
+            if self.sort_by_date:
+                try:
+                    if hasattr(path_or_entry, "stat") and hasattr(path_or_entry, "path") is False:
+                        return path_or_entry.stat().st_mtime
+                except Exception:
+                    pass
+
+                try:
+                    if hasattr(path_or_entry, "path"):
+                        return os.path.getmtime(path_or_entry.path)
+                except Exception:
+                    pass
+
+                try:
+                    p = Path(path_or_entry)
+                    return p.stat().st_mtime
+                except Exception:
+                    name = getattr(path_or_entry, "name", None) or str(path_or_entry)
+                    return natural_sort_key(name)
+
+            else:
+                name = None
+                if hasattr(path_or_entry, "name"):
+                    try:
+                        name = path_or_entry.name
+                    except Exception:
+                        name = None
+                if not name:
+                    try:
+                        name = Path(path_or_entry).name
+                    except Exception:
+                        name = str(path_or_entry)
+                return natural_sort_key(name)
+
+        except Exception:
+            return natural_sort_key(str(path_or_entry))
+
+
 
     def on_item_clicked(self, item, column):
         data = item.data(0, Qt.UserRole)

@@ -14,3 +14,4 @@ config.ini
 main nonono.py
 main yesyesyes.py
 tmp/
+result.json

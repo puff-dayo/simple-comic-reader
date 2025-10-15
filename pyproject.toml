@@ -10,3 +10,8 @@ dependencies = [
     "pymupdf==1.23.5",
     "pyside6>=6.10.0",
 ]
+
+[dependency-groups]
+dev = [
+    "viztracer>=1.0.4",
+]
