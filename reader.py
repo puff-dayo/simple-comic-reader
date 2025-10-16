@@ -5,7 +5,7 @@ import re
 import sys
 import zipfile
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 import fitz
 from PySide6.QtCore import (
@@ -105,7 +105,6 @@ def get_icon_for_file(path: Path):
 
     _icon_cache[ext] = icon
     return icon
-
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
@@ -1591,12 +1590,13 @@ class ComicReader(QMainWindow):
         self.current_pdf_obj = None
         self.current_pdf_path = None
         self._pdf_pixmap_cache = collections.OrderedDict()
-        self._pdf_cache_max = 64
+        self._pdf_cache_max = 128
         self._render_pool = QThreadPool.globalInstance()
         self._render_pool.setMaxThreadCount(4)
 
         self._zip_img_cache = collections.OrderedDict()
-        self._zip_img_cache_max = 64
+        self._zip_img_cache_max = 128
+        self._zip_pending_requests = {}
         self._image_render_pool = QThreadPool.globalInstance()
         self._image_render_pool.setMaxThreadCount(4)
         self._image_render_signal = _ImageRenderSignal()
@@ -1726,6 +1726,15 @@ class ComicReader(QMainWindow):
             self._last_viewport_size = (vp.width(), vp.height())
         except Exception:
             self._last_viewport_size = (0, 0)
+
+        self._debug_zip_cache = False
+
+    def _dbg(self, *args):
+        # try:
+        #     if getattr(self, "_debug_zip_cache", False):
+        #         print("[ComicReader DEBUG]", *args)
+        # except Exception:
+            pass
 
     def setup_shortcuts(self):
         try:
@@ -2716,13 +2725,75 @@ class ComicReader(QMainWindow):
         except Exception:
             pass
 
+    def _to_physical_size(self, logical_w: int, logical_h: int, dpr: float) -> Tuple[int, int]:
+        try:
+            pw = max(1, int(round(logical_w * (dpr or 1.0))))
+            ph = max(1, int(round(logical_h * (dpr or 1.0))))
+            return pw, ph
+        except Exception:
+            return max(1, logical_w), max(1, logical_h)
+
+    def _pixmap_physical_size(self, pm: QPixmap) -> Tuple[int, int]:
+        try:
+            try:
+                dpr = float(pm.devicePixelRatioF())
+            except Exception:
+                dpr = float(pm.devicePixelRatio()) if hasattr(pm, "devicePixelRatio") else 1.0
+            w = max(1, int(round(pm.width() * dpr)))
+            h = max(1, int(round(pm.height() * dpr)))
+            return w, h
+        except Exception:
+            return max(1, pm.width()), max(1, pm.height())
+
+    def _qimage_physical_size(self, qimg: QImage) -> Tuple[int, int]:
+        try:
+            return max(1, qimg.width()), max(1, qimg.height())
+        except Exception:
+            return 1, 1
+
     def _cache_get(self, key):
         try:
-            val = self._pdf_pixmap_cache.pop(key)
-            self._pdf_pixmap_cache[key] = val
-            return val
-        except KeyError:
+            pdf_path, page_num, tw, th = key
+        except Exception:
             return None
+
+        candidates = []
+        try:
+            for k in list(self._pdf_pixmap_cache.keys()):
+                try:
+                    k_pdf, k_page, k_w, k_h = k
+                except Exception:
+                    continue
+                if k_pdf == pdf_path and k_page == page_num and k_w > 0 and k_h > 0:
+                    if k_w >= tw and k_h >= th:
+                        candidates.append((k_w * k_h, k))
+        except Exception:
+            pass
+
+        if candidates:
+            candidates.sort(key=lambda x: (x[0], x[1][2]))
+            chosen_key = candidates[0][1]
+            try:
+                val = self._pdf_pixmap_cache.pop(chosen_key)
+                self._pdf_pixmap_cache[chosen_key] = val
+                return val
+            except Exception:
+                return None
+
+        return None
+
+    def _cache_put(self, key, pixmap):
+        try:
+            if key in self._pdf_pixmap_cache:
+                self._pdf_pixmap_cache.pop(key)
+            self._pdf_pixmap_cache[key] = pixmap
+            while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
+                self._pdf_pixmap_cache.popitem(last=False)
+        except Exception:
+            try:
+                self._pdf_pixmap_cache[key] = pixmap
+            except Exception:
+                pass
 
     def _zip_cache_put(self, key, qimage):
         try:
@@ -2739,216 +2810,372 @@ class ComicReader(QMainWindow):
 
     def _zip_cache_get(self, key):
         try:
-            val = self._zip_img_cache.pop(key)
-            self._zip_img_cache[key] = val
-            return val
-        except KeyError:
-            pass
-        except Exception:
-            pass
-
-        try:
             zip_path, inner, tw, th = key
         except Exception:
             return None
 
-        orig_key = (zip_path, inner, -1, -1)
+        # exact hit
         try:
-            orig = self._zip_img_cache.get(orig_key)
-            if orig:
-                if not tw or not th or tw <= 0 or th <= 0:
-                    try:
-                        v = self._zip_img_cache.pop(orig_key)
-                        self._zip_img_cache[orig_key] = v
-                    except Exception:
-                        pass
-                    return orig
-
+            val = self._zip_img_cache.get(key)
+            if val is not None:
                 try:
-                    scaled = orig.scaled(int(tw), int(th), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    try:
-                        self._zip_img_cache[key] = scaled
-                        while len(self._zip_img_cache) > self._zip_img_cache_max:
-                            self._zip_img_cache.popitem(last=False)
-                    except Exception:
-                        pass
-                    return scaled
+                    self._zip_img_cache.pop(key)
+                    self._zip_img_cache[key] = val
                 except Exception:
-                    return orig
+                    pass
+                try:
+                    if val.width() >= tw and val.height() >= th:
+                        return val
+                except Exception:
+                    return val
         except Exception:
             pass
+
+        candidates = []
+        try:
+            for k in list(self._zip_img_cache.keys()):
+                try:
+                    k_zip, k_inner, k_w, k_h = k
+                except Exception:
+                    continue
+                if k_zip == zip_path and k_inner == inner and k_w > 0 and k_h > 0:
+                    if k_w >= tw and k_h >= th:
+                        candidates.append((k_w * k_h, k))
+        except Exception:
+            pass
+
+        if candidates:
+            candidates.sort(key=lambda x: (x[0], x[1][2]))
+            chosen = candidates[0][1]
+            try:
+                val = self._zip_img_cache.pop(chosen)
+                self._zip_img_cache[chosen] = val
+                try:
+                    c_w, c_h = chosen[2], chosen[3]
+                    if c_w >= tw and c_h >= th:
+                        scaled_qimg = val.scaled(tw, th, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        new_key = (zip_path, inner, int(scaled_qimg.width()), int(scaled_qimg.height()))
+                        try:
+                            self._zip_img_cache[new_key] = scaled_qimg
+                            while len(self._zip_img_cache) > self._zip_img_cache_max:
+                                self._zip_img_cache.popitem(last=False)
+                        except Exception:
+                            pass
+                        if scaled_qimg.width() >= tw and scaled_qimg.height() >= th:
+                            return scaled_qimg
+                        else:
+                            return val
+                except Exception:
+                    pass
+                return val
+            except Exception:
+                pass
 
         return None
 
     def request_zip_image_render(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int):
-        key = (zip_path_str, inner_name, int(target_w), int(target_h))
+        try:
+            viewport = self._scroll_area.viewport()
+            try:
+                dpr = float(viewport.devicePixelRatioF())
+            except Exception:
+                try:
+                    dpr = float(self.devicePixelRatioF())
+                except Exception:
+                    dpr = 1.0
+        except Exception:
+            dpr = 1.0
+
+        tw_px, th_px = self._to_physical_size(int(target_w), int(target_h), dpr)
+        key = (zip_path_str, inner_name, int(tw_px), int(th_px))
+
+        self._dbg("request_zip_image_render target logical:", target_w, target_h, "dpr:", dpr, "=> phys:", tw_px, th_px, "key:", key)
+
         cached = self._zip_cache_get(key)
         if cached:
+            self._dbg("cache HIT exact/>= target for", key, "->", (cached.width(), cached.height()))
             return cached
-        task = _ImageRenderTask(zip_path_str, inner_name, target_w, target_h, self._image_render_signal)
+
+        pk = (zip_path_str, inner_name)
+        try:
+            s = self._zip_pending_requests.get(pk)
+            if s is None:
+                s = set()
+                self._zip_pending_requests[pk] = s
+            s.add((int(tw_px), int(th_px), str(self.scale_mode)))
+        except Exception:
+            try:
+                self._zip_pending_requests[pk] = {(int(tw_px), int(th_px), str(self.scale_mode))}
+            except Exception:
+                pass
+
+        self._dbg("cache MISS for", key, "-> registered pending:", self._zip_pending_requests.get(pk))
+
+        task = _ImageRenderTask(zip_path_str, inner_name, int(tw_px), int(th_px), self._image_render_signal)
         self._image_render_pool.start(task)
         return None
 
+
     def _on_image_render_finished(self, zip_path_str: str, inner_name: str, qimage: QImage):
         try:
-            if qimage and not qimage.isNull():
-                orig_key = (zip_path_str, inner_name, -1, -1)
+            if qimage is None or qimage.isNull():
+                return
+
+            phys_w = int(qimage.width())
+            phys_h = int(qimage.height())
+
+            orig_key_exact = (zip_path_str, inner_name, phys_w, phys_h)
+            try:
+                self._zip_cache_put(orig_key_exact, qimage)
+            except Exception:
                 try:
-                    self._zip_cache_put(orig_key, qimage)
+                    self._zip_img_cache[orig_key_exact] = qimage
                 except Exception:
                     pass
+
+            orig_key = (zip_path_str, inner_name, -1, -1)
+            try:
+                existing_orig = self._zip_img_cache.get(orig_key)
+                replace_orig = False
+                if existing_orig is None:
+                    replace_orig = True
+                else:
+                    try:
+                        ex_w, ex_h = int(existing_orig.width()), int(existing_orig.height())
+                        if phys_w > ex_w or phys_h > ex_h:
+                            replace_orig = True
+                    except Exception:
+                        replace_orig = True
+                if replace_orig:
+                    try:
+                        if orig_key in self._zip_img_cache:
+                            self._zip_img_cache.pop(orig_key)
+                        self._zip_img_cache[orig_key] = qimage
+                        while len(self._zip_img_cache) > self._zip_img_cache_max:
+                            self._zip_img_cache.popitem(last=False)
+                    except Exception:
+                        try:
+                            self._zip_img_cache[orig_key] = qimage
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            pk = (zip_path_str, inner_name)
+            pending = set()
+            try:
+                pending = self._zip_pending_requests.pop(pk, set())
+            except Exception:
+                pending = set()
+
+            for (tw, th, mode) in pending:
+                try:
+                    if phys_w >= 1 and phys_h >= 1:
+                        if mode == "fit_width":
+                            scaled = qimage.scaledToWidth(int(tw), Qt.SmoothTransformation)
+                        elif mode == "fit_height":
+                            scaled = qimage.scaledToHeight(int(th), Qt.SmoothTransformation)
+                        else:
+                            scaled = qimage.scaled(int(tw), int(th), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+                        scaled_key = (zip_path_str, inner_name, int(scaled.width()), int(scaled.height()))
+                        try:
+                            self._zip_cache_put(scaled_key, scaled)
+                            self._dbg("generated scaled cache for", scaled_key, "from orig", (phys_w, phys_h), "mode:", mode)
+                        except Exception:
+                            try:
+                                self._zip_img_cache[scaled_key] = scaled
+                            except Exception:
+                                pass
+                except Exception:
+                    continue
+
+            cur = None
+            if self.image_list and 0 <= self.current_index < len(self.image_list):
+                cur = self.image_list[self.current_index]
+            if isinstance(cur, str) and cur.startswith("zip://"):
+                try:
+                    before_last, cur_inner = cur.rsplit(":", 1)
+                    cur_zip = str(Path(before_last[6:]).resolve())
+                except Exception:
+                    cur_zip = None
+                    cur_inner = None
+
+                if cur_zip == zip_path_str and cur_inner == inner_name:
+                    try:
+                        viewport = self._scroll_area.viewport()
+                        try:
+                            dpr = float(viewport.devicePixelRatioF())
+                        except Exception:
+                            try:
+                                dpr = float(self.devicePixelRatioF())
+                            except Exception:
+                                dpr = 1.0
+                        vw = max(1, viewport.width())
+                        vh = max(1, viewport.height())
+                        tw_px, th_px = self._to_physical_size(vw, vh, dpr)
+                    except Exception:
+                        tw_px, th_px = phys_w, phys_h
+
+                    chosen_qimg = None
+                    try:
+                        mode = str(self.scale_mode)
+                        if mode == "fit_width":
+                            chosen_qimg = qimage.scaledToWidth(int(tw_px), Qt.SmoothTransformation)
+                        elif mode == "fit_height":
+                            chosen_qimg = qimage.scaledToHeight(int(th_px), Qt.SmoothTransformation)
+                        else:
+                            chosen_qimg = qimage.scaled(int(tw_px), int(th_px), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+                        try:
+                            self._zip_cache_put((zip_path_str, inner_name, int(chosen_qimg.width()), int(chosen_qimg.height())), chosen_qimg)
+                        except Exception:
+                            pass
+                    except Exception:
+                        chosen_qimg = qimage
+
+                    if chosen_qimg is not None:
+                        try:
+                            pix = QPixmap.fromImage(chosen_qimg)
+                            try:
+                                pix.setDevicePixelRatioF(dpr)
+                            except Exception:
+                                try:
+                                    pix.setDevicePixelRatio(dpr)
+                                except Exception:
+                                    pass
+                            self.current_pixmap = pix
+                            self.display_current_pixmap()
+                            self._dbg("displayed CHOSEN QIMAGE -> pixsize:", pix.width(), pix.height(), "dpr set:", dpr)
+                        except Exception:
+                            # fallback
+                            try:
+                                pix = QPixmap.fromImage(qimage)
+                                try:
+                                    pix.setDevicePixelRatioF(dpr)
+                                except Exception:
+                                    pass
+                                self.current_pixmap = pix
+                                self.display_current_pixmap()
+                            except Exception:
+                                pass
         except Exception:
             pass
 
-        cur = None
-        if self.image_list and 0 <= self.current_index < len(self.image_list):
-            cur = self.image_list[self.current_index]
-        if isinstance(cur, str) and cur.startswith("zip://"):
-            before_last, inner = cur.rsplit(":", 1)
-            try:
-                cur_zip = str(Path(before_last[6:]).resolve())
-            except Exception:
-                cur_zip = None
-            if cur_zip == zip_path_str and inner == inner_name:
-                try:
-                    pm_qimg = self._zip_cache_get((zip_path_str, inner_name, qimage.width(), qimage.height()))
-                    if pm_qimg is None:
-                        pm_qimg = qimage
-                    pix = QPixmap.fromImage(pm_qimg)
-                    self.current_pixmap = pix
-                    self.display_current_pixmap()
-                except Exception:
-                    pass
-
-    def _cache_put(self, key, pixmap):
-        if key in self._pdf_pixmap_cache:
-            self._pdf_pixmap_cache.pop(key)
-        self._pdf_pixmap_cache[key] = pixmap
-        while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
-            self._pdf_pixmap_cache.popitem(last=False)
-
     def request_pdf_page_render(self, pdf_path: str, page_num: int, target_w: int, target_h: int):
-        key = (pdf_path, page_num, int(target_w), int(target_h))
+        try:
+            viewport = self._scroll_area.viewport()
+            try:
+                dpr = float(viewport.devicePixelRatioF())
+            except Exception:
+                try:
+                    dpr = float(self.devicePixelRatioF())
+                except Exception:
+                    dpr = 1.0
+        except Exception:
+            dpr = 1.0
+
+        vw_px, vh_px = self._to_physical_size(int(target_w), int(target_h), dpr)
+        key = (pdf_path, page_num, int(vw_px), int(vh_px))
+
         cached = self._cache_get(key)
         if cached:
             return cached
-
-        orig_key = (pdf_path, page_num, -1, -1)
-        orig = None
-        try:
-            orig = self._pdf_pixmap_cache.get(orig_key)
-            if orig:
-                try:
-                    scaled = orig.scaled(int(target_w), int(target_h), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    self._cache_put(key, scaled)
-                    return scaled
-                except Exception:
-                    pass
-        except Exception:
-            orig = None
 
         if not hasattr(self, "_render_signal"):
             self._render_signal = _RenderSignal()
             self._render_signal.finished.connect(self._on_pdf_render_finished)
 
-        try:
-            viewport = self._scroll_area.viewport()
-            dpr = float(viewport.devicePixelRatioF())
-        except Exception:
-            try:
-                dpr = float(self.devicePixelRatioF())
-            except Exception:
-                dpr = 1.0
-
-        vw_px = max(1, int(round(target_w * dpr)))
-        vh_px = max(1, int(round(target_h * dpr)))
-
-        task = _PdfRenderTask(pdf_path, page_num, self._render_signal, target_w=vw_px, target_h=vh_px)
+        task = _PdfRenderTask(pdf_path, page_num, self._render_signal, target_w=int(vw_px), target_h=int(vh_px))
         self._render_pool.start(task)
         return None
 
     def _on_pdf_render_finished(self, pdf_path: str, page_num: int, pixmap: QPixmap):
-
-        print("PDF render finished:", pdf_path, page_num, "->", pixmap.width(), "x", pixmap.height())
-
-        viewport = self._scroll_area.viewport()
-        vw = viewport.width()
-        vh = viewport.height()
-        dpr = getattr(viewport, "devicePixelRatioF", lambda: 1.0)() if hasattr(viewport, "devicePixelRatioF") else 1.0
-        print("viewport logical:", vw, vh, "DPR:", dpr)
-        orig_pm = self._pdf_pixmap_cache.get((pdf_path, page_num, -1, -1))
-        if orig_pm:
-            print("orig pixmap physical:", orig_pm.width(), orig_pm.height(), "devicePixelRatio:",
-                  getattr(orig_pm, "devicePixelRatio", lambda: 1)())
-
         try:
-            if pixmap and not pixmap.isNull():
-                orig_key = (pdf_path, page_num, -1, -1)
+            if not pixmap or pixmap.isNull():
+                return
+            phys_w, phys_h = self._pixmap_physical_size(pixmap)
+
+            key = (pdf_path, page_num, phys_w, phys_h)
+            try:
+                self._cache_put(key, pixmap)
+            except Exception:
                 try:
-                    if orig_key in self._pdf_pixmap_cache:
-                        self._pdf_pixmap_cache.pop(orig_key)
-                    self._pdf_pixmap_cache[orig_key] = pixmap
-                    while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
-                        self._pdf_pixmap_cache.popitem(last=False)
+                    if key in self._pdf_pixmap_cache:
+                        self._pdf_pixmap_cache.pop(key)
+                    self._pdf_pixmap_cache[key] = pixmap
                 except Exception:
+                    pass
+
+            orig_key = (pdf_path, page_num, -1, -1)
+            try:
+                existing = self._pdf_pixmap_cache.get(orig_key)
+                replace = False
+                if existing is None:
+                    replace = True
+                else:
                     try:
-                        self._pdf_pixmap_cache[orig_key] = pixmap
+                        ex_w, ex_h = self._pixmap_physical_size(existing)
+                        if phys_w > ex_w or phys_h > ex_h:
+                            replace = True
                     except Exception:
-                        pass
+                        replace = True
+                if replace:
+                    try:
+                        if orig_key in self._pdf_pixmap_cache:
+                            self._pdf_pixmap_cache.pop(orig_key)
+                        self._pdf_pixmap_cache[orig_key] = pixmap
+                        while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
+                            self._pdf_pixmap_cache.popitem(last=False)
+                    except Exception:
+                        try:
+                            self._pdf_pixmap_cache[orig_key] = pixmap
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            cur = None
+            if self.image_list and 0 <= self.current_index < len(self.image_list):
+                cur = self.image_list[self.current_index]
+            if isinstance(cur, str) and cur.startswith("pdf://"):
+                before_last, p = cur.rsplit(":", 1)
+                try:
+                    cur_pdf = str(Path(before_last[6:]).resolve())
+                    cur_page = int(p)
+                except Exception:
+                    cur_pdf, cur_page = None, None
+
+                if cur_pdf == pdf_path and cur_page == page_num:
+                    try:
+                        try:
+                            dpr = float(self._scroll_area.viewport().devicePixelRatioF())
+                        except Exception:
+                            try:
+                                dpr = float(self.devicePixelRatioF())
+                            except Exception:
+                                dpr = 1.0
+                        try:
+                            pixmap.setDevicePixelRatioF(dpr)
+                        except Exception:
+                            try:
+                                pixmap.setDevicePixelRatio(dpr)
+                            except Exception:
+                                pass
+
+                        self.current_pixmap = pixmap
+                        self.image_label.setPixmap(pixmap)
+                        logical_w = int(round(pixmap.width() / (dpr or 1.0)))
+                        logical_h = int(round(pixmap.height() / (dpr or 1.0)))
+                        self.image_label.resize(logical_w, logical_h)
+                    except Exception:
+                        try:
+                            self.display_current_pixmap()
+                        except Exception:
+                            pass
         except Exception:
             pass
 
-        cur = None
-        if self.image_list and 0 <= self.current_index < len(self.image_list):
-            cur = self.image_list[self.current_index]
-        if isinstance(cur, str) and cur.startswith("pdf://"):
-            before_last, p = cur.rsplit(":", 1)
-            try:
-                cur_pdf = str(Path(before_last[6:]).resolve())
-                cur_page = int(p)
-            except Exception:
-                cur_pdf, cur_page = None, None
-
-            if cur_pdf == pdf_path and cur_page == page_num:
-                try:
-                    viewport = self._scroll_area.viewport()
-                    vw = max(1, viewport.width())
-                    vh = max(1, viewport.height())
-                except Exception:
-                    vw, vh = 800, 600
-
-                try:
-                    dpr = float(viewport.devicePixelRatioF())
-                except Exception:
-                    try:
-                        dpr = float(self.devicePixelRatioF())
-                    except Exception:
-                        dpr = 1.0
-
-                try:
-                    scaled_pm = pixmap
-                    try:
-                        scaled_pm.setDevicePixelRatioF(dpr)
-                    except Exception:
-                        try:
-                            scaled_pm.setDevicePixelRatio(dpr)
-                        except Exception:
-                            pass
-
-                    logical_w = int(round(scaled_pm.width() / dpr))
-                    logical_h = int(round(scaled_pm.height() / dpr))
-
-                    self.current_pixmap = scaled_pm
-                    try:
-                        self.image_label.setPixmap(scaled_pm)
-                        self.image_label.resize(logical_w, logical_h)
-                    except Exception:
-                        self.display_current_pixmap()
-                except Exception:
-                    try:
-                        self.display_current_pixmap()
-                    except Exception:
-                        pass
 
     def display_current_pixmap(self):
         if self.current_pixmap is None:
