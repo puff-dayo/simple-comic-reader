@@ -2518,8 +2518,8 @@ class ComicReader(QMainWindow):
                     pass
 
             self.current_pixmap = None
-            self.image_label.setPixmap(QPixmap())
-            self.hide_overlays()
+            # self.image_label.setPixmap(QPixmap())
+            # self.hide_overlays()
 
             try:
                 viewport = self._scroll_area.viewport()
@@ -2562,8 +2562,8 @@ class ComicReader(QMainWindow):
                 pass
 
             self.current_pixmap = None
-            self.image_label.setPixmap(QPixmap())
-            self.hide_overlays()
+            # self.image_label.setPixmap(QPixmap())
+            # self.hide_overlays()
 
             try:
                 viewport = self._scroll_area.viewport()
@@ -3176,8 +3176,8 @@ class ComicReader(QMainWindow):
 
     def display_current_pixmap(self):
         if self.current_pixmap is None:
-            self.image_label.setPixmap(QPixmap())
-            self.hide_overlays()
+            # self.image_label.setPixmap(QPixmap())
+            # self.hide_overlays()
             return
 
         scroll = self.image_label.scroll_area
