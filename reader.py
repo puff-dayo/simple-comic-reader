@@ -425,11 +425,6 @@ UI_JSON = {
             "en": "Settings have been saved and applied.",
             "ru": "Настройки сохранены и применены."
         },
-        "info_close_archives": {
-            "zh": "所有已打开的压缩包已关闭。",
-            "en": "All opened archives have been closed.",
-            "ru": "Все открытые архивы закрыты."
-        },
         "warning_zip_failed": {
             "zh": "解压失败: {error}",
             "en": "Failed to extract: {error}",
@@ -1845,7 +1840,7 @@ class ComicReader(QMainWindow):
                     pass
                 return
 
-    def close_all_archives(self, from_refresh=False):
+    def close_all_archives(self):
         try:
             if getattr(self, "_thumbnail_dialog", None):
                 try:
@@ -1910,9 +1905,6 @@ class ComicReader(QMainWindow):
             except Exception:
                 pass
             self.hide_overlays()
-
-            if not from_refresh:
-                QMessageBox.information(self, UI["app_window_title"], UI['dialogs_info_close_archives'])
 
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
@@ -2024,7 +2016,7 @@ class ComicReader(QMainWindow):
             self.load_directory()
 
     def reload_directory(self):
-        self.close_all_archives(from_refresh=True)
+        self.close_all_archives()
         self.load_directory()
 
     def load_directory(self):
