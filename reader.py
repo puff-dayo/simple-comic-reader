@@ -930,13 +930,15 @@ class _RenderSignal(QObject):
 
 
 class _PdfRenderTask(QRunnable):
-    def __init__(self, pdf_path: str, page_num: int, target_w: int, target_h: int, sig: _RenderSignal):
+    def __init__(self, pdf_path: str, page_num: int, sig: _RenderSignal,
+                 target_w: int = None, target_h: int = None, max_scale: float = 8.0):
         super().__init__()
         self.pdf_path = pdf_path
         self.page_num = page_num
-        self.target_w = target_w
-        self.target_h = target_h
         self.sig = sig
+        self.max_scale = float(max_scale)
+        self.target_w = int(target_w) if target_w else None
+        self.target_h = int(target_h) if target_h else None
 
     def run(self):
         try:
@@ -944,20 +946,51 @@ class _PdfRenderTask(QRunnable):
             page = doc[self.page_num]
             rect = page.rect
             orig_w, orig_h = rect.width, rect.height
+
+            scale = 1.0
+
+            if self.target_w and self.target_h and orig_w and orig_h:
+                try:
+                    scale_w = float(self.target_w) / float(orig_w)
+                    scale_h = float(self.target_h) / float(orig_h)
+                    scale = max(1.0, min(scale_w, scale_h))
+                except Exception:
+                    scale = 1.0
+
+            if (not self.target_w or not self.target_h) or scale <= 1.0:
+                try:
+                    imgs = page.get_images(full=True)
+                    if imgs:
+                        xref = imgs[0][0]
+                        try:
+                            imginfo = doc.extract_image(xref)
+                            img_w = imginfo.get("width", 0)
+                            if img_w and orig_w and orig_w > 0:
+                                scale = max(scale, float(img_w) / float(orig_w))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
             try:
-                if orig_w <= 0 or orig_h <= 0:
-                    mat = fitz.Matrix(1, 1)
-                else:
-                    desired_scale = min(self.target_w / orig_w, self.target_h / orig_h)
-                    min_scale = 0.2
-                    max_scale = 6.0
-                    scale = max(min_scale, desired_scale)
-                    scale = min(scale, max_scale)
-                    mat = fitz.Matrix(scale, scale)
+                if scale < 1.0:
+                    scale = 1.0
+            except Exception:
+                scale = 1.0
+
+            try:
+                if scale > self.max_scale:
+                    scale = self.max_scale
+            except Exception:
+                pass
+
+            try:
+                mat = fitz.Matrix(scale, scale)
             except Exception:
                 mat = fitz.Matrix(1, 1)
 
             pix = page.get_pixmap(matrix=mat, alpha=False)
+
             n = pix.n
             if n == 3:
                 fmt = QImage.Format_RGB888
@@ -965,11 +998,29 @@ class _PdfRenderTask(QRunnable):
                 fmt = QImage.Format_RGBA8888
             else:
                 fmt = QImage.Format_RGB888
-            qimg = QImage(pix.samples, pix.width, pix.height, pix.stride, fmt).copy()
+
+            try:
+                qimg = QImage(pix.samples, pix.width, pix.height, pix.stride, fmt).copy()
+            except Exception:
+                try:
+                    png_bytes = pix.tobytes(output="png")
+                except TypeError:
+                    png_bytes = pix.tobytes("png")
+                qimg = QImage.fromData(png_bytes)
+
             qpix = QPixmap.fromImage(qimg)
-            self.sig.finished.emit(self.pdf_path, self.page_num, qpix)
-            doc.close()
-        except Exception as e:
+
+            try:
+                self.sig.finished.emit(self.pdf_path, self.page_num, qpix)
+            except Exception:
+                pass
+
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+        except Exception:
             try:
                 self.sig.finished.emit(self.pdf_path, self.page_num, QPixmap())
             except Exception:
@@ -1789,9 +1840,6 @@ class ComicReader(QMainWindow):
                 return
 
     def close_all_archives(self, from_refresh=False):
-        """
-        Close any opened zip/pdf, remove virtual tree items and clear related caches.
-        """
         try:
             if getattr(self, "_thumbnail_dialog", None):
                 try:
@@ -2662,7 +2710,6 @@ class ComicReader(QMainWindow):
             for nref in neighbors:
                 try:
                     _, inner = nref.rsplit(":", 1)
-                    # 请求缓存（非阻塞）
                     self.request_zip_image_render(zip_path_str, inner, vw, vh)
                 except Exception:
                     pass
@@ -2785,17 +2832,72 @@ class ComicReader(QMainWindow):
         cached = self._cache_get(key)
         if cached:
             return cached
+
+        orig_key = (pdf_path, page_num, -1, -1)
+        orig = None
+        try:
+            orig = self._pdf_pixmap_cache.get(orig_key)
+            if orig:
+                try:
+                    scaled = orig.scaled(int(target_w), int(target_h), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    self._cache_put(key, scaled)
+                    return scaled
+                except Exception:
+                    pass
+        except Exception:
+            orig = None
+
         if not hasattr(self, "_render_signal"):
             self._render_signal = _RenderSignal()
             self._render_signal.finished.connect(self._on_pdf_render_finished)
-        task = _PdfRenderTask(pdf_path, page_num, target_w, target_h, self._render_signal)
+
+        try:
+            viewport = self._scroll_area.viewport()
+            dpr = float(viewport.devicePixelRatioF())
+        except Exception:
+            try:
+                dpr = float(self.devicePixelRatioF())
+            except Exception:
+                dpr = 1.0
+
+        vw_px = max(1, int(round(target_w * dpr)))
+        vh_px = max(1, int(round(target_h * dpr)))
+
+        task = _PdfRenderTask(pdf_path, page_num, self._render_signal, target_w=vw_px, target_h=vh_px)
         self._render_pool.start(task)
         return None
 
     def _on_pdf_render_finished(self, pdf_path: str, page_num: int, pixmap: QPixmap):
-        if pixmap and not pixmap.isNull():
-            key = (pdf_path, page_num, pixmap.width(), pixmap.height())
-            self._cache_put(key, pixmap)
+
+        print("PDF render finished:", pdf_path, page_num, "->", pixmap.width(), "x", pixmap.height())
+
+        viewport = self._scroll_area.viewport()
+        vw = viewport.width()
+        vh = viewport.height()
+        dpr = getattr(viewport, "devicePixelRatioF", lambda: 1.0)() if hasattr(viewport, "devicePixelRatioF") else 1.0
+        print("viewport logical:", vw, vh, "DPR:", dpr)
+        orig_pm = self._pdf_pixmap_cache.get((pdf_path, page_num, -1, -1))
+        if orig_pm:
+            print("orig pixmap physical:", orig_pm.width(), orig_pm.height(), "devicePixelRatio:",
+                  getattr(orig_pm, "devicePixelRatio", lambda: 1)())
+
+        try:
+            if pixmap and not pixmap.isNull():
+                orig_key = (pdf_path, page_num, -1, -1)
+                try:
+                    if orig_key in self._pdf_pixmap_cache:
+                        self._pdf_pixmap_cache.pop(orig_key)
+                    self._pdf_pixmap_cache[orig_key] = pixmap
+                    while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
+                        self._pdf_pixmap_cache.popitem(last=False)
+                except Exception:
+                    try:
+                        self._pdf_pixmap_cache[orig_key] = pixmap
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         cur = None
         if self.image_list and 0 <= self.current_index < len(self.image_list):
             cur = self.image_list[self.current_index]
@@ -2806,11 +2908,47 @@ class ComicReader(QMainWindow):
                 cur_page = int(p)
             except Exception:
                 cur_pdf, cur_page = None, None
+
             if cur_pdf == pdf_path and cur_page == page_num:
-                pm = self._cache_get((pdf_path, page_num, pixmap.width(), pixmap.height()))
-                if pm:
-                    self.current_pixmap = pm
-                    self.display_current_pixmap()
+                try:
+                    viewport = self._scroll_area.viewport()
+                    vw = max(1, viewport.width())
+                    vh = max(1, viewport.height())
+                except Exception:
+                    vw, vh = 800, 600
+
+                try:
+                    dpr = float(viewport.devicePixelRatioF())
+                except Exception:
+                    try:
+                        dpr = float(self.devicePixelRatioF())
+                    except Exception:
+                        dpr = 1.0
+
+                try:
+                    scaled_pm = pixmap
+                    try:
+                        scaled_pm.setDevicePixelRatioF(dpr)
+                    except Exception:
+                        try:
+                            scaled_pm.setDevicePixelRatio(dpr)
+                        except Exception:
+                            pass
+
+                    logical_w = int(round(scaled_pm.width() / dpr))
+                    logical_h = int(round(scaled_pm.height() / dpr))
+
+                    self.current_pixmap = scaled_pm
+                    try:
+                        self.image_label.setPixmap(scaled_pm)
+                        self.image_label.resize(logical_w, logical_h)
+                    except Exception:
+                        self.display_current_pixmap()
+                except Exception:
+                    try:
+                        self.display_current_pixmap()
+                    except Exception:
+                        pass
 
     def display_current_pixmap(self):
         if self.current_pixmap is None:
@@ -2826,79 +2964,118 @@ class ComicReader(QMainWindow):
         viewport = scroll.viewport()
         vw = max(1, viewport.width())
         vh = max(1, viewport.height())
-        orig_w = self.current_pixmap.width()
-        orig_h = self.current_pixmap.height()
+
+        try:
+            viewport_dpr = float(viewport.devicePixelRatioF())
+        except Exception:
+            try:
+                viewport_dpr = float(self.devicePixelRatioF())
+            except Exception:
+                viewport_dpr = 1.0
+
+        vw_px = max(1, int(round(vw * viewport_dpr)))
+        vh_px = max(1, int(round(vh * viewport_dpr)))
+
+        pm = self.current_pixmap
+
+        try:
+            try:
+                pm_dpr = float(pm.devicePixelRatioF())
+            except Exception:
+                try:
+                    pm_dpr = float(pm.devicePixelRatio())
+                except Exception:
+                    pm_dpr = 1.0
+            orig_w = max(1, int(round(pm.width() * pm_dpr)))
+            orig_h = max(1, int(round(pm.height() * pm_dpr)))
+        except Exception:
+            orig_w = max(1, pm.width())
+            orig_h = max(1, pm.height())
+            pm_dpr = 1.0
 
         v_scroll_w = scroll.verticalScrollBar().sizeHint().width()
         h_scroll_h = scroll.horizontalScrollBar().sizeHint().height()
 
-        def scaled_size_by_width(target_w):
-            target_h = round(orig_h * (target_w / orig_w))
-            return max(1, int(target_w)), max(1, int(target_h))
+        def scaled_size_by_width_px(target_w_px):
+            target_h_px = max(1, int(round(orig_h * (float(target_w_px) / max(1, orig_w)))))
+            return max(1, int(target_w_px)), target_h_px
 
-        def scaled_size_by_height(target_h):
-            target_w = round(orig_w * (target_h / orig_h))
-            return max(1, int(target_w)), max(1, int(target_h))
+        def scaled_size_by_height_px(target_h_px):
+            target_w_px = max(1, int(round(orig_w * (float(target_h_px) / max(1, orig_h)))))
+            return target_w_px, max(1, int(target_h_px))
 
         if self.scale_mode == "fit_width":
-
-            new_w, new_h = scaled_size_by_width(vw)
-
-            if new_h > vh:
-                avail_w = max(1, vw - v_scroll_w)
-                new_w, new_h = scaled_size_by_width(avail_w)
+            new_w_px, new_h_px = scaled_size_by_width_px(vw_px)
+            if new_h_px > vh_px:
+                avail_w = max(1, (vw - v_scroll_w) * viewport_dpr)
+                new_w_px, new_h_px = scaled_size_by_width_px(int(round(avail_w)))
 
         elif self.scale_mode == "fit_height":
-            new_w, new_h = scaled_size_by_height(vh)
-
-            if new_w > vw:
-                avail_h = max(1, vh - h_scroll_h)
-                new_w, new_h = scaled_size_by_height(avail_h)
+            new_w_px, new_h_px = scaled_size_by_height_px(vh_px)
+            if new_w_px > vw_px:
+                avail_h = max(1, (vh - h_scroll_h) * viewport_dpr)
+                new_w_px, new_h_px = scaled_size_by_height_px(int(round(avail_h)))
 
         elif self.scale_mode == "custom":
-
             factor = max(0.01, self.custom_zoom / 100.0)
-            new_w = max(1, round(orig_w * factor))
-            new_h = max(1, round(orig_h * factor))
+            new_w_px = max(1, int(round(orig_w * factor)))
+            new_h_px = max(1, int(round(orig_h * factor)))
 
         else:  # fit_page
+            ratio = min(vw_px / max(1, orig_w), vh_px / max(1, orig_h))
+            new_w_px = max(1, int(round(orig_w * ratio)))
+            new_h_px = max(1, int(round(orig_h * ratio)))
 
-            ratio = min(vw / orig_w, vh / orig_h)
-            new_w = max(1, round(orig_w * ratio))
-            new_h = max(1, round(orig_h * ratio))
+            if new_h_px > vh_px:
+                avail_w_px = max(1, (vw - v_scroll_w) * viewport_dpr)
+                ratio2 = min(avail_w_px / max(1, orig_w), vh_px / max(1, orig_h))
+                new_w_px = max(1, int(round(orig_w * ratio2)))
+                new_h_px = max(1, int(round(orig_h * ratio2)))
 
-            if new_h > vh:
-                avail_w = max(1, vw - v_scroll_w)
-                ratio2 = min(avail_w / orig_w, vh / orig_h)
-                new_w = max(1, round(orig_w * ratio2))
-                new_h = max(1, round(orig_h * ratio2))
+            if new_w_px > vw_px:
+                avail_h_px = max(1, (vh - h_scroll_h) * viewport_dpr)
+                ratio3 = min(vw_px / max(1, orig_w), avail_h_px / max(1, orig_h))
+                new_w_px = max(1, int(round(orig_w * ratio3)))
+                new_h_px = max(1, int(round(orig_h * ratio3)))
 
-            if new_w > vw:
-                avail_h = max(1, vh - h_scroll_h)
-                ratio3 = min(vw / orig_w, avail_h / orig_h)
-                new_w = max(1, round(orig_w * ratio3))
-                new_h = max(1, round(orig_h * ratio3))
+        try:
+            scaled = pm.scaled(int(new_w_px), int(new_h_px), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        except Exception:
+            scaled = pm
 
-        scaled = self.current_pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.image_label.setPixmap(scaled)
+        try:
+            scaled.setDevicePixelRatioF(viewport_dpr)
+        except Exception:
+            try:
+                scaled.setDevicePixelRatio(viewport_dpr)
+            except Exception:
+                pass
 
-        self.image_label.resize(scaled.size())
+        try:
+            logical_w = int(round(scaled.width() / viewport_dpr))
+            logical_h = int(round(scaled.height() / viewport_dpr))
+            self.image_label.setPixmap(scaled)
+            self.image_label.resize(logical_w, logical_h)
+        except Exception:
+            try:
+                self.image_label.setPixmap(scaled)
+            except Exception:
+                pass
 
         allow_x = False
         allow_y = False
         if self.scale_mode == "fit_width":
             allow_x = False
-            allow_y = scaled.height() > vh
+            allow_y = scaled.height() / viewport_dpr > vh
         elif self.scale_mode == "fit_height":
             allow_y = False
-            allow_x = scaled.width() > vw
+            allow_x = scaled.width() / viewport_dpr > vw
         elif self.scale_mode == "custom":
-
-            allow_x = scaled.width() > vw
-            allow_y = scaled.height() > vh
+            allow_x = scaled.width() / viewport_dpr > vw
+            allow_y = scaled.height() / viewport_dpr > vh
         else:  # fit_page
-            allow_x = scaled.width() > vw
-            allow_y = scaled.height() > vh
+            allow_x = scaled.width() / viewport_dpr > vw
+            allow_y = scaled.height() / viewport_dpr > vh
 
         self.image_label.allow_pan_x = allow_x
         self.image_label.allow_pan_y = allow_y
@@ -2914,11 +3091,10 @@ class ComicReader(QMainWindow):
         hbar = scroll.horizontalScrollBar()
         vbar = scroll.verticalScrollBar()
         if self.scale_mode == "fit_width":
-
             vbar.setValue(vbar.minimum())
         elif self.scale_mode == "fit_height":
-
             hbar.setValue(hbar.minimum())
+
 
     def on_scale_mode_changed(self, index):
         if index == 0:
@@ -3148,25 +3324,64 @@ class ComicReader(QMainWindow):
     def set_scale_mode(self, mode: str):
         if mode not in {"fit_page", "fit_width", "fit_height", "custom"}:
             return
-        self.scale_mode = mode
-        if mode == "fit_page":
-            self.scale_combo.setCurrentIndex(0)
-        elif mode == "fit_height":
-            self.scale_combo.setCurrentIndex(1)
-        elif mode == "fit_width":
-            self.scale_combo.setCurrentIndex(2)
 
+        self.scale_mode = mode
         try:
-            cur = self.image_list[self.current_index] if (
-                        self.image_list and 0 <= self.current_index < len(self.image_list)) else None
-            cur_str = str(cur) if cur else ""
-            if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
-                self.clear_cache_and_rerender()
-                return
+            if mode == "fit_page":
+                self.scale_combo.setCurrentIndex(0)
+            elif mode == "fit_height":
+                self.scale_combo.setCurrentIndex(1)
+            elif mode == "fit_width":
+                self.scale_combo.setCurrentIndex(2)
         except Exception:
             pass
 
-        self.display_current_pixmap()
+        try:
+            if hasattr(self, "_pdf_pixmap_cache"):
+                try:
+                    self._pdf_pixmap_cache.clear()
+                except Exception:
+                    try:
+                        import collections
+                        self._pdf_pixmap_cache = collections.OrderedDict()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "_pdf_rendering"):
+                try:
+                    self._pdf_rendering.clear()
+                except Exception:
+                    try:
+                        self._pdf_rendering = set()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        try:
+            cur = None
+            if self.image_list and 0 <= self.current_index < len(self.image_list):
+                cur = self.image_list[self.current_index]
+            cur_str = str(cur) if cur else ""
+            if cur_str.startswith("pdf://"):
+                try:
+                    self.clear_cache_and_rerender()
+                except Exception:
+                    try:
+                        self.display_current_pixmap()
+                    except Exception:
+                        pass
+            else:
+                try:
+                    self.display_current_pixmap()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
 
     def set_custom_zoom(self, percent: int):
         try:
@@ -3256,22 +3471,26 @@ class ComicReader(QMainWindow):
         except Exception:
             return
 
-        self._last_viewport_size = (vw, vh)
-
-        if not self.image_list or not (0 <= self.current_index < len(self.image_list)):
+        if (vw, vh) == getattr(self, "_last_viewport_size", (0,0)):
+            return
+        lw, lh = getattr(self, "_last_viewport_size", (0,0))
+        if abs(vw - lw) <= 2 and abs(vh - lh) <= 2:
             return
 
+        self._last_viewport_size = (vw, vh)
+        if not self.image_list or not (0 <= self.current_index < len(self.image_list)):
+            return
         cur = self.image_list[self.current_index]
         try:
             cur_str = str(cur)
         except Exception:
             cur_str = ""
-
         if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
             try:
                 self.clear_cache_and_rerender()
-            except Exception as e:
+            except Exception:
                 pass
+
 
     def closeEvent(self, event):
         try:
