@@ -1,5 +1,7 @@
 # Simple Comic Reader
 
+[![CodeQL](https://github.com/puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/fbbf81f5e5434399bec0bc275ea988c9)](https://app.codacy.com/gh/puff-dayo/simple-comic-reader/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+
 [English](README.md) | [简体中文](README.zh_CN.md) | [Русский](README.ru_RU.md)
 
 A lightweight, comic and image reader built with Qt for Python.  
