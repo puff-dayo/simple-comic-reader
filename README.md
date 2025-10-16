@@ -5,7 +5,7 @@
 A lightweight, comic and image reader built with Qt for Python.  
 Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fullscreen capabilities.
 
-<img width="480" height="auto" alt="" src="https://github.com/user-attachments/assets/d0b6900f-ef79-4788-b3e5-e707ecb1dd49" />
+<img width="520" height="auto" alt="" src="https://github.com/user-attachments/assets/b9b9bff6-1fcb-49e1-ae4c-f76cea602029" />
 
 ---
 
@@ -24,7 +24,7 @@ Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fu
 
 ##  Usage
 
-Download binary release and run, or build from source.
+For Windows 64-bit, Download binary [release](https://github.com/puff-dayo/simple-comic-reader/releases) and run, or you can build from source for other OS.
 
 ---
 
