@@ -3,6 +3,9 @@ import sys
 import os
 import zipfile
 import configparser
+import io
+import weakref
+from typing import List, Dict, Any
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeWidget, QTreeWidgetItem, QLabel,
@@ -199,6 +202,11 @@ UI_JSON = {
       "zh": "取消",
       "en": "Cancel",
       "ru": "Отмена"
+    },
+    "thumbs_tooltip": {
+      "zh": "打开缩略图面板",
+      "en": "Open archive thumbnails",
+      "ru": "Открыть миниатюры архива"
     }
   },
   "labels": {
@@ -390,6 +398,21 @@ UI_JSON = {
       "en": "Help",
       "ru": "Справка"
     },
+    "thumbnails_title": {
+      "zh": "缩略图",
+      "en": "Thumbnails",
+      "ru": "Миниатюры"
+    },
+    "thumbnails_no_images": {
+      "zh": "未找到可用的缩略图。",
+      "en": "No thumbnails found.",
+      "ru": "Миниатюр не найдено."
+    },
+    "thumbnails_loading": {
+      "zh": "正在生成缩略图…",
+      "en": "Loading thumbnails…",
+      "ru": "Загрузка миниатюр…"
+    },
     "info_saved": {
       "zh": "设置已保存",
       "en": "Settings saved",
@@ -527,6 +550,11 @@ UI_JSON = {
       "zh": "已写入默认配置到 config.ini",
       "en": "Default configuration written to config.ini",
       "ru": "Файл config.ini создан с настройками по умолчанию"
+    },
+    "thumbs_reload_failed": {
+      "zh": "缩略图加载失败：{error}",
+      "en": "Thumbnail load failed: {error}",
+      "ru": "Ошибка загрузки миниатюр: {error}"
     }
   },
   "placeholders_and_helpers": {
@@ -947,10 +975,133 @@ class ThumbnailLabel(QLabel):
             super().mousePressEvent(event)
             
 
+class ThumbnailSignals(QObject):
+    thumb_ready = Signal(object)
+    finished = Signal(list)
+    error = Signal(str)
+    
+
+class ThumbnailLoadTask(QRunnable):
+    def __init__(self, dir_path: Path, thumb_w: int, thumb_h: int, signals: ThumbnailSignals, cancel_cb=None):
+        super().__init__()
+        self.dir_path = Path(dir_path) if dir_path else None
+        self.thumb_w = int(thumb_w)
+        self.thumb_h = int(thumb_h)
+        self.signals = signals
+        self.cancel_cb = cancel_cb or (lambda: False)
+
+    def run(self):
+        if not self.dir_path:
+            try:
+                self.signals.finished.emit([])
+            except Exception:
+                pass
+            return
+
+        results = []
+        try:
+            entries = []
+            for p in sorted(self.dir_path.iterdir(), key=lambda x: natural_sort_key(x.name)):
+                if p.is_file():
+                    ext = p.suffix.lower()
+                    if ext in {'.zip', '.cbz', '.pdf'} or ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+                        entries.append(p)
+        except Exception as e:
+            try:
+                self.signals.error.emit(str(e))
+            except Exception:
+                pass
+            try:
+                self.signals.finished.emit(results)
+            except Exception:
+                pass
+            return
+
+        for p in entries:
+            if self.cancel_cb():
+                break
+
+            try:
+                ext = p.suffix.lower()
+                key = str(p.resolve())
+                caption = p.name
+
+                if ext in {'.zip', '.cbz'}:
+                    try:
+                        with zipfile.ZipFile(str(p), 'r') as zf:
+                            names = [n for n in zf.namelist() if os.path.basename(n) and os.path.basename(n).lower().endswith(('.jpg','.jpeg','.png','.gif','.bmp','.webp'))]
+                            if not names:
+                                continue
+                            names.sort(key=natural_sort_key)
+                            first = names[0]
+                            with zf.open(first) as f:
+                                data = f.read()
+                            thumb_key = f"zip://{str(p.resolve())}:{first}"
+                            payload = {'key': thumb_key, 'data': data, 'caption': caption}
+                            results.append(payload)
+                            try:
+                                self.signals.thumb_ready.emit(payload)
+                            except Exception:
+                                pass
+                    except Exception:
+                        continue
+
+                elif ext == '.pdf':
+                    try:
+                        doc = fitz.open(str(p))
+                        if len(doc) <= 0:
+                            doc.close()
+                            continue
+                        page = doc[0]
+                        scale = max(0.05, min(1.0, self.thumb_w / page.rect.width))
+                        mat = fitz.Matrix(scale, scale)
+                        pixmap = page.get_pixmap(matrix=mat, alpha=False)
+                        try:
+                            png_bytes = pixmap.tobytes(output="png")
+                        except TypeError:
+                            png_bytes = pixmap.tobytes("png")
+                        doc.close()
+                        thumb_key = f"pdf://{str(p.resolve())}:0"
+                        payload = {'key': thumb_key, 'data': png_bytes, 'caption': caption}
+                        results.append(payload)
+                        try:
+                            self.signals.thumb_ready.emit(payload)
+                        except Exception:
+                            pass
+                    except Exception:
+                        try:
+                            doc.close()
+                        except Exception:
+                            pass
+                        continue
+
+                else:
+                    try:
+                        with open(p, 'rb') as f:
+                            data = f.read()
+                        thumb_key = str(p)
+                        payload = {'key': thumb_key, 'data': data, 'caption': caption}
+                        results.append(payload)
+                        try:
+                            self.signals.thumb_ready.emit(payload)
+                        except Exception:
+                            pass
+                    except Exception:
+                        continue
+
+            except Exception:
+                continue
+
+        try:
+            self.signals.finished.emit(results)
+        except Exception:
+            pass
+            
+
 class ThumbnailDialog(QDialog):
     def __init__(self, parent, thumb_size=(240, 160), spacing=8):
         super().__init__(parent)
-        self.setWindowTitle("Archive Thumbnails")
+        self.setWindowTitle(UI['dialogs_thumbnails_title'])
         self.parent = parent
         self.thumb_w, self.thumb_h = thumb_size
         self.spacing = spacing
@@ -970,8 +1121,13 @@ class ThumbnailDialog(QDialog):
 
         self._thumb_cache = {}  # key->QPixmap
         self._items = []  # (thumb_label, key)
-
+        self._thumb_task_cancelled = False
+        self._thumb_task = None
+        self._thumb_signals = None
+        
     def clear_thumbs(self):
+        self._thumb_task_cancelled = True
+        self._thumb_task = None
         while self.flow.count():
             it = self.flow.takeAt(0)
             wid = it.widget()
@@ -979,6 +1135,24 @@ class ThumbnailDialog(QDialog):
                 wid.setParent(None)
         self._thumb_cache.clear()
         self._items.clear()
+
+    def _on_thumb_ready(self, payload: Dict[str, Any]):
+        try:
+            data = payload.get('data') if isinstance(payload, dict) else None
+            key = payload.get('key') if isinstance(payload, dict) else None
+            caption = payload.get('caption', "")
+            if not data or not key:
+                return
+            pix = QPixmap()
+            ok = pix.loadFromData(data)
+            if not ok or pix.isNull():
+                return
+            self.add_thumbnail_widget(key, pix, caption)
+        except Exception:
+            pass
+
+    def _on_thumbs_finished(self, results: List[Dict[str, Any]]):
+        self._thumb_task = None
 
     def add_thumbnail_widget(self, key, pixmap: QPixmap, caption: str = ""):
         thumb = pixmap.scaled(self.thumb_w, self.thumb_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -1174,88 +1348,29 @@ class ThumbnailDialog(QDialog):
         except Exception:
             pass
 
-
     def populate_from_dir(self, dir_path: Path):
         self.clear_thumbs()
+        self._thumb_task_cancelled = False
+
         if dir_path is None:
+            QMessageBox.information(self, UI['dialogs_thumbnails_title'],
+                                    UI['dialogs_thumbnails_no_images'])
             return
 
-        try:
-            entries = []
-            for p in sorted(dir_path.iterdir(), key=lambda x: natural_sort_key(x.name)):
-                if p.is_file():
-                    ext = p.suffix.lower()
-                    if ext in {'.zip', '.cbz', '.pdf'} or ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
-                        entries.append(p)
-        except Exception:
-            return
+        signals = ThumbnailSignals()
+        signals.thumb_ready.connect(self._on_thumb_ready)
+        signals.finished.connect(self._on_thumbs_finished)
+        signals.error.connect(lambda e: None) # TODO: show error msg
 
-        for p in entries:
-            try:
-                ext = p.suffix.lower()
-                key = str(p)
-                if ext in {'.zip', '.cbz'}:
-                    try:
-                        zf = zipfile.ZipFile(str(p), 'r')
-                        names = [n for n in zf.namelist() if os.path.basename(n) and os.path.basename(n).lower().endswith(('.jpg','.jpeg','.png','.gif','.bmp','.webp'))]
-                        if not names:
-                            zf.close()
-                            continue
-                        names.sort(key=natural_sort_key)
-                        first = names[0]
-                        with zf.open(first) as f:
-                            data = f.read()
-                            pix = QPixmap()
-                            pix.loadFromData(data)
-                        zf.close()
-                        thumb_key = f"zip://{str(p.resolve())}:{first}"
-                        caption = p.name
-                        self.add_thumbnail_widget(thumb_key, pix, caption)
-                    except Exception:
-                        try:
-                            zf.close()
-                        except Exception:
-                            pass
-                        continue
+        self._thumb_signals = signals
 
-                elif ext == '.pdf':
-                    try:
-                        doc = fitz.open(str(p))
-                        if len(doc) <= 0:
-                            doc.close()
-                            continue
-                        page = doc[0]
-                        scale = max(0.05, min(1.0, self.thumb_w / page.rect.width))
-                        mat = fitz.Matrix(scale, scale)
-                        pixmap = page.get_pixmap(matrix=mat, alpha=False)
-                        n = pixmap.n
-                        fmt = QImage.Format_RGB888 if n in (3,) else QImage.Format_RGBA8888
-                        qimg = QImage(pixmap.samples, pixmap.width, pixmap.height, pixmap.stride, fmt).copy()
-                        qpix = QPixmap.fromImage(qimg)
-                        doc.close()
-                        thumb_key = f"pdf://{str(p.resolve())}:0"
-                        caption = p.name
-                        self.add_thumbnail_widget(thumb_key, qpix, caption)
-                    except Exception:
-                        try:
-                            doc.close()
-                        except Exception:
-                            pass
-                        continue
+        def cancel_cb():
+            return self._thumb_task_cancelled or (not self.isVisible())
 
-                else:
-                    try:
-                        pix = QPixmap(str(p))
-                        if pix.isNull():
-                            continue
-                        thumb_key = str(p)
-                        caption = p.name
-                        self.add_thumbnail_widget(thumb_key, pix, caption)
-                    except Exception:
-                        continue
+        task = ThumbnailLoadTask(dir_path=dir_path, thumb_w=self.thumb_w, thumb_h=self.thumb_h, signals=signals, cancel_cb=cancel_cb)
+        self._thumb_task = task
 
-            except Exception:
-                continue
+        QThreadPool.globalInstance().start(task)
 
 
 class FlowLayout(QLayout):
@@ -1375,7 +1490,7 @@ class ComicReader(QMainWindow):
         self.btn_open.clicked.connect(self.select_directory)
         
         self.btn_thumbs = QPushButton("🖼️")
-        self.btn_thumbs.setToolTip("Open archive thumbnails")
+        self.btn_thumbs.setToolTip(UI['buttons_thumbs_tooltip'])
         self.btn_thumbs.setFixedSize(32, 28)
         self.btn_thumbs.clicked.connect(self.open_archive_thumbnails)
 
@@ -1649,7 +1764,7 @@ class ComicReader(QMainWindow):
     def open_archive_thumbnails(self):
         try:
             if self._thumbnail_dialog is None:
-                self._thumbnail_dialog = ThumbnailDialog(self, thumb_size=(220, 140), spacing=8)
+                self._thumbnail_dialog = ThumbnailDialog(self, thumb_size=(160, 240), spacing=8)
             curdir = self.current_dir if (self.current_dir and self.current_dir.exists()) else None
             if curdir:
                 self._thumbnail_dialog.populate_from_dir(curdir)
