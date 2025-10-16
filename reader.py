@@ -944,11 +944,19 @@ class _PdfRenderTask(QRunnable):
             page = doc[self.page_num]
             rect = page.rect
             orig_w, orig_h = rect.width, rect.height
-            if orig_w <= 0 or orig_h <= 0:
+            try:
+                if orig_w <= 0 or orig_h <= 0:
+                    mat = fitz.Matrix(1, 1)
+                else:
+                    desired_scale = min(self.target_w / orig_w, self.target_h / orig_h)
+                    min_scale = 0.2
+                    max_scale = 6.0
+                    scale = max(min_scale, desired_scale)
+                    scale = min(scale, max_scale)
+                    mat = fitz.Matrix(scale, scale)
+            except Exception:
                 mat = fitz.Matrix(1, 1)
-            else:
-                scale = min(max(0.5, min(self.target_w / orig_w, self.target_h / orig_h)), 2.0)
-                mat = fitz.Matrix(scale, scale)
+
             pix = page.get_pixmap(matrix=mat, alpha=False)
             n = pix.n
             if n == 3:
@@ -990,8 +998,13 @@ class _ImageRenderTask(QRunnable):
                     pass
                 return
 
-            if self.target_w > 0 and self.target_h > 0:
-                qimg = qimg.scaled(self.target_w, self.target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            try:
+                max_dim = 8192
+                if qimg.width() > max_dim or qimg.height() > max_dim:
+                    qimg = qimg.scaled(max_dim, max_dim, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            except Exception:
+                pass
+
             try:
                 self.sig.finished.emit(self.zip_path_str, self.inner_name, qimg)
             except Exception:
@@ -1001,6 +1014,7 @@ class _ImageRenderTask(QRunnable):
                 self.sig.finished.emit(self.zip_path_str, self.inner_name, QImage())
             except Exception:
                 pass
+
 
 
 class _ImageRenderSignal(QObject):
@@ -2663,20 +2677,61 @@ class ComicReader(QMainWindow):
         except KeyError:
             return None
 
+    def _zip_cache_put(self, key, qimage):
+        try:
+            if key in self._zip_img_cache:
+                self._zip_img_cache.pop(key)
+            self._zip_img_cache[key] = qimage
+            while len(self._zip_img_cache) > self._zip_img_cache_max:
+                self._zip_img_cache.popitem(last=False)
+        except Exception:
+            try:
+                self._zip_img_cache[key] = qimage
+            except Exception:
+                pass
+
     def _zip_cache_get(self, key):
         try:
             val = self._zip_img_cache.pop(key)
             self._zip_img_cache[key] = val
             return val
         except KeyError:
+            pass
+        except Exception:
+            pass
+
+        try:
+            zip_path, inner, tw, th = key
+        except Exception:
             return None
 
-    def _zip_cache_put(self, key, qimage):
-        if key in self._zip_img_cache:
-            self._zip_img_cache.pop(key)
-        self._zip_img_cache[key] = qimage
-        while len(self._zip_img_cache) > self._zip_img_cache_max:
-            self._zip_img_cache.popitem(last=False)
+        orig_key = (zip_path, inner, -1, -1)
+        try:
+            orig = self._zip_img_cache.get(orig_key)
+            if orig:
+                if not tw or not th or tw <= 0 or th <= 0:
+                    try:
+                        v = self._zip_img_cache.pop(orig_key)
+                        self._zip_img_cache[orig_key] = v
+                    except Exception:
+                        pass
+                    return orig
+
+                try:
+                    scaled = orig.scaled(int(tw), int(th), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    try:
+                        self._zip_img_cache[key] = scaled
+                        while len(self._zip_img_cache) > self._zip_img_cache_max:
+                            self._zip_img_cache.popitem(last=False)
+                    except Exception:
+                        pass
+                    return scaled
+                except Exception:
+                    return orig
+        except Exception:
+            pass
+
+        return None
 
     def request_zip_image_render(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int):
         key = (zip_path_str, inner_name, int(target_w), int(target_h))
@@ -2690,8 +2745,11 @@ class ComicReader(QMainWindow):
     def _on_image_render_finished(self, zip_path_str: str, inner_name: str, qimage: QImage):
         try:
             if qimage and not qimage.isNull():
-                key = (zip_path_str, inner_name, qimage.width(), qimage.height())
-                self._zip_cache_put(key, qimage)
+                orig_key = (zip_path_str, inner_name, -1, -1)
+                try:
+                    self._zip_cache_put(orig_key, qimage)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2705,10 +2763,10 @@ class ComicReader(QMainWindow):
             except Exception:
                 cur_zip = None
             if cur_zip == zip_path_str and inner == inner_name:
-                pm_qimg = self._zip_cache_get((zip_path_str, inner_name, qimage.width(), qimage.height()))
-                if pm_qimg is None:
-                    pm_qimg = qimage
                 try:
+                    pm_qimg = self._zip_cache_get((zip_path_str, inner_name, qimage.width(), qimage.height()))
+                    if pm_qimg is None:
+                        pm_qimg = qimage
                     pix = QPixmap.fromImage(pm_qimg)
                     self.current_pixmap = pix
                     self.display_current_pixmap()
