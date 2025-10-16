@@ -8,19 +8,21 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeWidget, QTreeWidgetItem, QLabel,
     QVBoxLayout, QHBoxLayout, QWidget, QFileDialog, QMenu, QMessageBox,
     QStyle, QSplitter, QPushButton, QComboBox, QScrollArea, QFileIconProvider
-    )
-from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit
+)
+from PySide6.QtWidgets import (
+    QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
+)
 from PySide6.QtGui import QKeySequence, QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon, QImage
 from PySide6.QtCore import (
     Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool, QTimer
-    )
+)
 
 import fitz
 import collections
 
 import re
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.1.1"
 
 def is_archive_ext(ext: str) -> bool:
     if not ext:
@@ -928,6 +930,412 @@ class _PdfRenderTask(QRunnable):
                 pass
 
 
+class ThumbnailLabel(QLabel):
+    clicked = Signal(object)
+    def __init__(self, payload=None, parent=None):
+        super().__init__(parent)
+        self.payload = payload
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setAlignment(Qt.AlignCenter)
+        self.setScaledContents(False)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.payload)
+        else:
+            super().mousePressEvent(event)
+            
+
+class ThumbnailDialog(QDialog):
+    def __init__(self, parent, thumb_size=(240, 160), spacing=8):
+        super().__init__(parent)
+        self.setWindowTitle("Archive Thumbnails")
+        self.parent = parent
+        self.thumb_w, self.thumb_h = thumb_size
+        self.spacing = spacing
+        self.setModal(False)
+        self.resize(800, 600)
+
+        self.scroll = QScrollArea(self)
+        self.scroll.setWidgetResizable(True)
+        self.container = QWidget()
+        self.flow = FlowLayout(self.container, margin=6, spacing=self.spacing)
+        self.container.setLayout(self.flow)
+        self.scroll.setWidget(self.container)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.scroll)
+        self.setLayout(layout)
+
+        self._thumb_cache = {}  # key->QPixmap
+        self._items = []  # (thumb_label, key)
+
+    def clear_thumbs(self):
+        while self.flow.count():
+            it = self.flow.takeAt(0)
+            wid = it.widget()
+            if wid:
+                wid.setParent(None)
+        self._thumb_cache.clear()
+        self._items.clear()
+
+    def add_thumbnail_widget(self, key, pixmap: QPixmap, caption: str = ""):
+        thumb = pixmap.scaled(self.thumb_w, self.thumb_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        lbl = ThumbnailLabel(payload=key, parent=self.container)
+        lbl.setFixedSize(self.thumb_w, self.thumb_h + 22)
+        frame = QWidget()
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(4,4,4,4)
+        image_lbl = QLabel()
+        image_lbl.setAlignment(Qt.AlignCenter)
+        image_lbl.setPixmap(thumb)
+        image_lbl.setFixedSize(self.thumb_w, self.thumb_h)
+        cap = QLabel(caption)
+        cap.setAlignment(Qt.AlignCenter)
+        cap.setWordWrap(True)
+        cap.setFixedHeight(20)
+        v.addWidget(image_lbl)
+        v.addWidget(cap)
+        frame.setFixedSize(self.thumb_w + 8, self.thumb_h + 24)
+        click_wrapper = ThumbnailLabel(payload=key, parent=self.container)
+        inner_layout = QVBoxLayout(click_wrapper)
+        inner_layout.setContentsMargins(0,0,0,0)
+        inner_layout.addWidget(frame)
+        click_wrapper.setFixedSize(frame.size())
+        click_wrapper.clicked.connect(self.on_thumb_clicked)
+        self.flow.addWidget(click_wrapper)
+        self._items.append((click_wrapper, key))
+
+    def on_thumb_clicked(self, key):
+        try:
+            if not isinstance(key, str):
+                return
+
+            if key.startswith("zip://"):
+                try:
+                    before_last, inner = key.rsplit(":", 1)
+                    zip_path_str = before_last[6:]
+                    zip_path = Path(zip_path_str).resolve()
+                except Exception:
+                    self.parent.load_image(key)
+                    return
+
+                found_item = None
+                for i in range(self.parent.tree.topLevelItemCount()):
+                    top = self.parent.tree.topLevelItem(i)
+                    data = top.data(0, Qt.UserRole)
+                    try:
+                        if data and str(data) == str(zip_path):
+                            found_item = top
+                            break
+                        if isinstance(data, str) and data == str(zip_path):
+                            found_item = top
+                            break
+                    except Exception:
+                        continue
+
+                if not found_item:
+                    for i in range(self.parent.tree.topLevelItemCount()):
+                        top = self.parent.tree.topLevelItem(i)
+                        def _rec_search(item):
+                            nonlocal found_item
+                            if found_item:
+                                return
+                            d = item.data(0, Qt.UserRole)
+                            try:
+                                if d and str(d) == str(zip_path):
+                                    found_item = item
+                                    return
+                            except Exception:
+                                pass
+                            for j in range(item.childCount()):
+                                _rec_search(item.child(j))
+                        _rec_search(top)
+                        if found_item:
+                            break
+
+                if found_item is not None:
+                    try:
+                        self.parent.extract_zip_to_tree(found_item, zip_path)
+                    except Exception:
+                        pass
+
+                virt = self.parent.virtual_items.get(str(zip_path))
+                target_ref = f"zip://{str(zip_path)}:{inner}"
+                if virt:
+                    files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
+                    self.parent.image_list = files
+                    try:
+                        self.parent.current_index = files.index(target_ref)
+                    except ValueError:
+                        found_idx = None
+                        for idx, it in enumerate(files):
+                            if it.endswith(inner):
+                                found_idx = idx
+                                break
+                        if found_idx is not None:
+                            self.parent.current_index = found_idx
+                            target_ref = files[found_idx]
+                        else:
+                            self.parent.current_index = 0
+                            target_ref = files[0] if files else target_ref
+
+                    try:
+                        self.parent.load_image(target_ref)
+                        try:
+                            self.parent.select_tree_item_for_path(target_ref)
+                        except Exception:
+                            pass
+                        return
+                    except Exception:
+                        pass
+
+                try:
+                    self.parent.load_image(target_ref)
+                except Exception:
+                    try:
+                        self.parent.load_image(key)
+                    except Exception:
+                        pass
+                return
+
+            if key.startswith("pdf://"):
+                try:
+                    before_last, p = key.rsplit(":", 1)
+                    pdf_path_str = before_last[6:]
+                    pdf_path = Path(pdf_path_str).resolve()
+                    page_idx = int(p)
+                except Exception:
+                    self.parent.load_image(key)
+                    return
+
+                found_item = None
+                for i in range(self.parent.tree.topLevelItemCount()):
+                    top = self.parent.tree.topLevelItem(i)
+                    data = top.data(0, Qt.UserRole)
+                    try:
+                        if data and str(data) == str(pdf_path):
+                            found_item = top
+                            break
+                    except Exception:
+                        continue
+
+                if found_item is not None:
+                    try:
+                        self.parent.extract_pdf_to_tree(found_item, pdf_path)
+                    except Exception:
+                        pass
+
+                virt = self.parent.virtual_items.get(str(pdf_path))
+                target_ref = f"pdf://{str(pdf_path)}:{page_idx}"
+                if virt:
+                    files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
+                    self.parent.image_list = files
+                    try:
+                        self.parent.current_index = files.index(target_ref)
+                    except ValueError:
+                        self.parent.current_index = max(0, min(len(files)-1, page_idx))
+                        target_ref = files[self.parent.current_index] if files else target_ref
+
+                    try:
+                        self.parent.load_image(target_ref)
+                        try:
+                            self.parent.select_tree_item_for_path(target_ref)
+                        except Exception:
+                            pass
+                        return
+                    except Exception:
+                        pass
+
+                try:
+                    self.parent.load_image(target_ref)
+                except Exception:
+                    try:
+                        self.parent.load_image(key)
+                    except Exception:
+                        pass
+                return
+
+            try:
+                self.parent.image_list = [key]
+                self.parent.current_index = 0
+                self.parent.load_image(key)
+                try:
+                    self.parent.select_tree_item_for_path(key)
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    self.parent.load_image(key)
+                except Exception:
+                    pass
+
+        except Exception:
+            pass
+
+
+    def populate_from_dir(self, dir_path: Path):
+        self.clear_thumbs()
+        if dir_path is None:
+            return
+
+        try:
+            entries = []
+            for p in sorted(dir_path.iterdir(), key=lambda x: natural_sort_key(x.name)):
+                if p.is_file():
+                    ext = p.suffix.lower()
+                    if ext in {'.zip', '.cbz', '.pdf'} or ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+                        entries.append(p)
+        except Exception:
+            return
+
+        for p in entries:
+            try:
+                ext = p.suffix.lower()
+                key = str(p)
+                if ext in {'.zip', '.cbz'}:
+                    try:
+                        zf = zipfile.ZipFile(str(p), 'r')
+                        names = [n for n in zf.namelist() if os.path.basename(n) and os.path.basename(n).lower().endswith(('.jpg','.jpeg','.png','.gif','.bmp','.webp'))]
+                        if not names:
+                            zf.close()
+                            continue
+                        names.sort(key=natural_sort_key)
+                        first = names[0]
+                        with zf.open(first) as f:
+                            data = f.read()
+                            pix = QPixmap()
+                            pix.loadFromData(data)
+                        zf.close()
+                        thumb_key = f"zip://{str(p.resolve())}:{first}"
+                        caption = p.name
+                        self.add_thumbnail_widget(thumb_key, pix, caption)
+                    except Exception:
+                        try:
+                            zf.close()
+                        except Exception:
+                            pass
+                        continue
+
+                elif ext == '.pdf':
+                    try:
+                        doc = fitz.open(str(p))
+                        if len(doc) <= 0:
+                            doc.close()
+                            continue
+                        page = doc[0]
+                        scale = max(0.05, min(1.0, self.thumb_w / page.rect.width))
+                        mat = fitz.Matrix(scale, scale)
+                        pixmap = page.get_pixmap(matrix=mat, alpha=False)
+                        n = pixmap.n
+                        fmt = QImage.Format_RGB888 if n in (3,) else QImage.Format_RGBA8888
+                        qimg = QImage(pixmap.samples, pixmap.width, pixmap.height, pixmap.stride, fmt).copy()
+                        qpix = QPixmap.fromImage(qimg)
+                        doc.close()
+                        thumb_key = f"pdf://{str(p.resolve())}:0"
+                        caption = p.name
+                        self.add_thumbnail_widget(thumb_key, qpix, caption)
+                    except Exception:
+                        try:
+                            doc.close()
+                        except Exception:
+                            pass
+                        continue
+
+                else:
+                    try:
+                        pix = QPixmap(str(p))
+                        if pix.isNull():
+                            continue
+                        thumb_key = str(p)
+                        caption = p.name
+                        self.add_thumbnail_widget(thumb_key, pix, caption)
+                    except Exception:
+                        continue
+
+            except Exception:
+                continue
+
+
+class FlowLayout(QLayout):
+    def __init__(self, parent=None, margin=0, spacing=6):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self._spacing = spacing
+        self.itemList = []
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientations(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        height = self.doLayout(QRect(0, 0, width, 0), True)
+        return height
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.itemList:
+            size = size.expandedTo(item.minimumSize())
+        mleft, mtop, mright, mbottom = self.getContentsMargins()
+        size += QSize(mleft + mright, mtop + mbottom)
+        return size
+
+    def doLayout(self, rect, testOnly):
+        x = rect.x()
+        y = rect.y()
+        lineHeight = 0
+        effective_rect = rect.adjusted(+self.contentsMargins().left(), +self.contentsMargins().top(),
+                                       -self.contentsMargins().right(), -self.contentsMargins().bottom())
+        x = effective_rect.x()
+        y = effective_rect.y()
+        maxWidth = effective_rect.width()
+
+        for item in self.itemList:
+            wid = item.widget()
+            hint = item.sizeHint()
+            nextX = x + hint.width() + self._spacing
+            if nextX - self._spacing > effective_rect.right() + 1 and lineHeight > 0:
+                x = effective_rect.x()
+                y = y + lineHeight + self._spacing
+                nextX = x + hint.width() + self._spacing
+                lineHeight = 0
+
+            if not testOnly:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+
+            x = nextX
+            lineHeight = max(lineHeight, hint.height())
+
+        return y + lineHeight - rect.y() + self.contentsMargins().bottom()
+
+
 class ComicReader(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -952,11 +1360,12 @@ class ComicReader(QMainWindow):
         self._render_pool = QThreadPool.globalInstance()
 
         self.virtual_items = {}
+        
+        self._thumbnail_dialog = None
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel(UI['labels_file_list'])
         self.tree.itemClicked.connect(self.on_item_clicked)
-        # self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
 
@@ -964,6 +1373,11 @@ class ComicReader(QMainWindow):
         self.btn_open.setToolTip(UI['buttons_open_folder_tooltip'])
         self.btn_open.setFixedSize(32, 28)
         self.btn_open.clicked.connect(self.select_directory)
+        
+        self.btn_thumbs = QPushButton("🖼️")
+        self.btn_thumbs.setToolTip("Open archive thumbnails")
+        self.btn_thumbs.setFixedSize(32, 28)
+        self.btn_thumbs.clicked.connect(self.open_archive_thumbnails)
 
         self.btn_help = QPushButton("❔")
         self.btn_help.setToolTip(UI['buttons_help_tooltip'])
@@ -997,6 +1411,8 @@ class ComicReader(QMainWindow):
         left_top_layout = QHBoxLayout(left_top)
         left_top_layout.setContentsMargins(2, 2, 2, 2)
         left_top_layout.addWidget(self.btn_open)
+        left_top_layout.addWidget(self.btn_thumbs)
+
         left_top_layout.addWidget(self.btn_settings)
         left_top_layout.addWidget(self.btn_help)
         left_top_layout.addWidget(self.btn_fullscreen)
@@ -1180,9 +1596,15 @@ class ComicReader(QMainWindow):
                     pass
                 return
 
-    def close_all_archives(self):
+    def close_all_archives(self, from_refresh=False):
         try:
-
+            if getattr(self, "_thumbnail_dialog", None):
+                try:
+                    self._thumbnail_dialog.close()
+                except Exception:
+                    pass
+                self._thumbnail_dialog = None
+            
             if self.current_zip_obj is not None:
                 try:
                     self.current_zip_obj.close()
@@ -1218,12 +1640,24 @@ class ComicReader(QMainWindow):
             self.image_label.setPixmap(QPixmap())
             self.hide_overlays()
 
-            QMessageBox.information(self, UI["app_window_title"], UI['dialogs_info_close_archives'])
+            if not from_refresh:
+                QMessageBox.information(self, UI["app_window_title"], UI['dialogs_info_close_archives'])
 
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
-
+    def open_archive_thumbnails(self):
+        try:
+            if self._thumbnail_dialog is None:
+                self._thumbnail_dialog = ThumbnailDialog(self, thumb_size=(220, 140), spacing=8)
+            curdir = self.current_dir if (self.current_dir and self.current_dir.exists()) else None
+            if curdir:
+                self._thumbnail_dialog.populate_from_dir(curdir)
+            self._thumbnail_dialog.show()
+            self._thumbnail_dialog.raise_()
+            self._thumbnail_dialog.activateWindow()
+        except Exception as e:
+            QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
     def open_settings(self):
         dlg = SettingsDialog(self, config=self.config)
@@ -1325,9 +1759,20 @@ class ComicReader(QMainWindow):
             self.load_directory()
             
     def reload_directory(self):
+        self.close_all_archives(from_refresh=True)
         self.load_directory()
 
     def load_directory(self):
+        try:
+            if self._thumbnail_dialog is not None:
+                try:
+                    self._thumbnail_dialog.close()
+                except Exception:
+                    pass
+                self._thumbnail_dialog = None
+        except Exception:
+            pass
+        
         if getattr(self, "_loading_dir", False):
             return
         
@@ -2441,7 +2886,6 @@ class ComicReader(QMainWindow):
             try:
                 self.clear_cache_and_rerender()
             except Exception as e:
-                # print(f"[warn] auto re-render on resize failed: {e}")
                 pass
 
     def closeEvent(self, event):
