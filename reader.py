@@ -966,7 +966,7 @@ class ComicReader(QMainWindow):
         self.btn_open.clicked.connect(self.select_directory)
 
         self.btn_help = QPushButton("❔")
-        self.btn_help.setToolTip("UI['buttons_help_tooltip']")
+        self.btn_help.setToolTip(UI['buttons_help_tooltip'])
         self.btn_help.setFixedSize(32, 28)
         self.btn_help.clicked.connect(self.open_help)
 
