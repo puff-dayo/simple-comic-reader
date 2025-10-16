@@ -307,7 +307,7 @@ UI_JSON = {
     },
     "dialogs": {
         "help_html": {
-            "zh": "<h3>简单漫画阅读器</h3>\n"
+            "zh": "<h2>简单漫画阅读器</h2>\n"
                   f"<p><b>版本：</b> {APP_VERSION}</p>\n"
                   "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
                   "<hr>\n"
@@ -319,7 +319,6 @@ UI_JSON = {
                   "<li><b>右键</b>：显示操作菜单</li>\n"
                   "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
                   "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
-                  "<li><b>Ctrl + 滚轮：</b> 快速调整缩放（每格 ±10%）</li>\n"
                   "<li><b>左右边缘点击：</b> 点击图片区域左右边缘可翻页</li>\n"
                   "<li><b>F11 或 ⛶ 按钮：</b> 切换全屏 / 退出全屏</li>\n"
                   "<li><b>隐藏文件面板：</b> 通过右键菜单或拖拽左右中间的分隔线至最左</li>\n"
@@ -334,7 +333,7 @@ UI_JSON = {
                   "<hr>\n"
                   "<p>程序记忆设置保存到 <code>config.ini</code> 文件中。</p>",
 
-            "en": "<h3>Simple Comic Reader</h3>\n"
+            "en": "<h2>Simple Comic Reader</h2>\n"
                   f"<p><b>Version:</b> {APP_VERSION}</p>\n"
                   "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
                   "<hr>\n"
@@ -346,7 +345,6 @@ UI_JSON = {
                   "<li><b>Right-click</b>: Show action menu</li>\n"
                   "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
                   "<li><b>Mouse wheel:</b> Pan when image exceeds window</li>\n"
-                  "<li><b>Ctrl + Wheel:</b> Adjust zoom quickly (±10% per notch)</li>\n"
                   "<li><b>Edge clicks:</b> Click left/right edges to flip pages</li>\n"
                   "<li><b>F11 or ⛶ button:</b> Toggle fullscreen</li>\n"
                   "<li><b>Hide file panel:</b> Use context menu or drag splitter left</li>\n"
@@ -361,7 +359,7 @@ UI_JSON = {
                   "<hr>\n"
                   "<p>Program stores settings in <code>config.ini</code>.</p>",
 
-            "ru": "<h3>Простой просмотрщик комиксов</h3>\n"
+            "ru": "<h2>Простой просмотрщик комиксов</h2>\n"
                   f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
                   "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
                   "<hr>\n"
@@ -373,7 +371,6 @@ UI_JSON = {
                   "<li><b>Правый клик</b>: Показать меню действий</li>\n"
                   "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
                   "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
-                  "<li><b>Ctrl + Колесо:</b> Быстрое изменение масштаба (±10% за шаг)</li>\n"
                   "<li><b>Клики по краям:</b> Нажатие слева/справа для перелистывания</li>\n"
                   "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
                   "<li><b>Скрыть панель файлов:</b> Через контекстное меню или переместить разделитель влево</li>\n"
@@ -822,12 +819,12 @@ class ImageLabel(QLabel):
             super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event):
-        if (event.modifiers() & Qt.ControlModifier) and self.main_window:
-            delta = event.angleDelta().y()
-            if delta != 0:
-                self.main_window.adjust_zoom_from_wheel(delta)
-                event.accept()
-                return
+        # if (event.modifiers() & Qt.ControlModifier) and self.main_window:
+        #     delta = event.angleDelta().y()
+        #     if delta != 0:
+        #         self.main_window.adjust_zoom_from_wheel(delta)
+        #         event.accept()
+        #         return
         super().wheelEvent(event)
 
     def contextMenuEvent(self, event):
@@ -854,14 +851,14 @@ class ImageLabel(QLabel):
 
             menu.addSeparator()
 
-            for pct in (50, 75, 100, 125, 150, 200):
-                act = QAction(f"{pct}%", self)
-                act.triggered.connect(lambda checked=False, p=pct: mw.set_custom_zoom(p))
-                menu.addAction(act)
-
-            menu.addSeparator()
+            # for pct in (50, 75, 100, 125, 150, 200):
+            #     act = QAction(f"{pct}%", self)
+            #     act.triggered.connect(lambda checked=False, p=pct: mw.set_custom_zoom(p))
+            #     menu.addAction(act)
+            #
+            # menu.addSeparator()
             reset_act = QAction(UI['shortcuts_reset_zoom'], self)
-            reset_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
+            reset_act.triggered.connect(lambda: mw.set_scale_mode(f"{mw.scale_mode}"))
             menu.addAction(reset_act)
 
             clear_cache_act = QAction(UI['context_menu_refresh'], self)
@@ -1222,7 +1219,7 @@ class ThumbnailDialog(QDialog):
         self.thumb_w, self.thumb_h = thumb_size
         self.spacing = spacing
         self.setModal(False)
-        self.resize(800, 600)
+        self.resize(768, 600)
 
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
@@ -1273,7 +1270,7 @@ class ThumbnailDialog(QDialog):
     def add_thumbnail_widget(self, key, pixmap: QPixmap, caption: str = ""):
         thumb = pixmap.scaled(self.thumb_w, self.thumb_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         lbl = ThumbnailLabel(payload=key, parent=self.container)
-        lbl.setFixedSize(self.thumb_w, self.thumb_h + 22)
+        lbl.setFixedSize(self.thumb_w, self.thumb_h + 24)
         frame = QWidget()
         v = QVBoxLayout(frame)
         v.setContentsMargins(4, 4, 4, 4)
@@ -1284,10 +1281,10 @@ class ThumbnailDialog(QDialog):
         cap = QLabel(caption)
         cap.setAlignment(Qt.AlignCenter)
         cap.setWordWrap(True)
-        cap.setFixedHeight(20)
+        cap.setFixedHeight(24)
         v.addWidget(image_lbl)
         v.addWidget(cap)
-        frame.setFixedSize(self.thumb_w + 8, self.thumb_h + 24)
+        frame.setFixedSize(self.thumb_w + 8, self.thumb_h + 26)
         click_wrapper = ThumbnailLabel(payload=key, parent=self.container)
         inner_layout = QVBoxLayout(click_wrapper)
         inner_layout.setContentsMargins(0, 0, 0, 0)
