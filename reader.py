@@ -1323,6 +1323,9 @@ class ComicReader(QMainWindow):
         if dir_path:
             self.current_dir = Path(dir_path).resolve()
             self.load_directory()
+            
+    def reload_directory(self):
+        self.load_directory()
 
     def load_directory(self):
         if getattr(self, "_loading_dir", False):
@@ -2290,6 +2293,11 @@ class ComicReader(QMainWindow):
 
     def show_context_menu(self, position):
         menu = QMenu()
+        
+        reload_act = QAction(UI['context_menu_refresh'], self)
+        reload_act.triggered.connect(self.reload_directory)
+        menu.addAction(reload_act)
+        
         sort_action = QAction(UI['context_menu_sort_by_date'], self)
         sort_action.setCheckable(True)
         sort_action.setChecked(self.sort_by_date)
