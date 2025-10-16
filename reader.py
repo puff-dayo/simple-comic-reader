@@ -1,12 +1,17 @@
-
-import sys
-import os
-import zipfile
+import collections
 import configparser
-import io
-import weakref
-from typing import List, Dict, Any
+import os
+import re
+import sys
+import zipfile
 from pathlib import Path
+from typing import List, Dict, Any
+
+import fitz
+from PySide6.QtCore import (
+    Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool, QTimer
+)
+from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon, QImage
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeWidget, QTreeWidgetItem, QLabel,
     QVBoxLayout, QHBoxLayout, QWidget, QFileDialog, QMenu, QMessageBox,
@@ -15,33 +20,28 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
 )
-from PySide6.QtGui import QKeySequence, QPixmap, QKeySequence, QShortcut, QAction, QCursor, QPalette, QIcon, QImage
-from PySide6.QtCore import (
-    Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool, QTimer
-)
 
-import fitz
-import collections
+APP_VERSION = "1.2"
 
-import re
-
-APP_VERSION = "1.1.1"
 
 def is_archive_ext(ext: str) -> bool:
     if not ext:
         return False
     return ext.lower() in {'.zip', '.cbz'}
 
+
 def is_archive_path_str(s: str) -> bool:
     try:
         return str(s).lower().endswith(('.zip', '.cbz'))
     except Exception:
         return False
-    
+
+
 def is_pdf_ext(ext: str) -> bool:
     if not ext:
         return False
     return ext.lower() == '.pdf'
+
 
 def is_pdf_path_str(s: str) -> bool:
     try:
@@ -49,13 +49,16 @@ def is_pdf_path_str(s: str) -> bool:
     except Exception:
         return False
 
+
 def is_pdf_protocol(s: str) -> bool:
     try:
         return isinstance(s, str) and s.startswith("pdf://")
     except Exception:
         return False
 
+
 _num_re = re.compile(r'(\d+)')
+
 
 def natural_sort_key(s):
     if isinstance(s, (Path, QFileInfo)):
@@ -73,13 +76,15 @@ def natural_sort_key(s):
             key.append(p.lower())
     return key
 
-    
+
 icon_provider = QFileIconProvider()
 _icon_cache = {}
+
 
 def clear_icon_cache():
     global _icon_cache
     _icon_cache = {}
+
 
 def get_icon_for_file(path: Path):
     try:
@@ -101,6 +106,7 @@ def get_icon_for_file(path: Path):
     _icon_cache[ext] = icon
     return icon
 
+
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
 DEFAULT_CONFIG = {
@@ -120,456 +126,457 @@ DEFAULT_CONFIG = {
 }
 
 UI_JSON = {
-  "app": {
-    "window_title": {
-      "zh": "简单漫画阅读器",
-      "en": "Simple Comic Reader",
-      "ru": "Простой просмотрщик комиксов"
+    "app": {
+        "window_title": {
+            "zh": "简单漫画阅读器",
+            "en": "Simple Comic Reader",
+            "ru": "Простой просмотрщик комиксов"
+        },
+        "about_owner": {
+            "zh": "开发者：Setsuna (github@puffdayo)",
+            "en": "Developer: Setsuna (github@puffdayo)",
+            "ru": "Разработчик: Setsuna (github@puffdayo)"
+        }
     },
-    "about_owner": {
-      "zh": "开发者：Setsuna (github@puffdayo)",
-      "en": "Developer: Setsuna (github@puffdayo)",
-      "ru": "Разработчик: Setsuna (github@puffdayo)"
-    }
-  },
-  "buttons": {
-    "open_folder": {
-      "zh": "📁",
-      "en": "📁",
-      "ru": "📁"
+    "buttons": {
+        "open_folder": {
+            "zh": "📁",
+            "en": "📁",
+            "ru": "📁"
+        },
+        "open_folder_tooltip": {
+            "zh": "打开文件夹",
+            "en": "Open folder",
+            "ru": "Открыть папку"
+        },
+        "help": {
+            "zh": "❔",
+            "en": "❔",
+            "ru": "❔"
+        },
+        "help_tooltip": {
+            "zh": "查看帮助",
+            "en": "Open help",
+            "ru": "Открыть справку"
+        },
+        "settings": {
+            "zh": "⚙️",
+            "en": "⚙️",
+            "ru": "⚙️"
+        },
+        "settings_tooltip": {
+            "zh": "打开设置面板",
+            "en": "Open settings",
+            "ru": "Открыть настройки"
+        },
+        "fullscreen": {
+            "zh": "⛶",
+            "en": "⛶",
+            "ru": "⛶"
+        },
+        "fullscreen_tooltip": {
+            "zh": "切换全屏 (F11)",
+            "en": "Toggle fullscreen (F11)",
+            "ru": "Переключить полноэкранный режим (F11)"
+        },
+        "close_all": {
+            "zh": "🧹",
+            "en": "🧹",
+            "ru": "🧹"
+        },
+        "close_all_tooltip": {
+            "zh": "关闭所有已打开的压缩包",
+            "en": "Close all opened archives",
+            "ru": "Закрыть все открытые архивы"
+        },
+        "choose": {
+            "zh": "选择...",
+            "en": "Choose...",
+            "ru": "Выбрать..."
+        },
+        "choose_color": {
+            "zh": "选择颜色",
+            "en": "Choose color",
+            "ru": "Выбрать цвет"
+        },
+        "save": {
+            "zh": "保存",
+            "en": "Save",
+            "ru": "Сохранить"
+        },
+        "cancel": {
+            "zh": "取消",
+            "en": "Cancel",
+            "ru": "Отмена"
+        },
+        "thumbs_tooltip": {
+            "zh": "打开缩略图面板",
+            "en": "Open archive thumbnails",
+            "ru": "Открыть миниатюры архива"
+        }
     },
-    "open_folder_tooltip": {
-      "zh": "打开文件夹",
-      "en": "Open folder",
-      "ru": "Открыть папку"
+    "labels": {
+        "file_list": {
+            "zh": "文件列表",
+            "en": "File list",
+            "ru": "Список файлов"
+        },
+        "auto_open_dir": {
+            "zh": "自动打开目录：",
+            "en": "Auto-open directory:",
+            "ru": "Каталог для автозагрузки:"
+        },
+        "bg_color": {
+            "zh": "背景颜色 (#RRGGBB)：",
+            "en": "Background color (#RRGGBB):",
+            "ru": "Цвет фона (#RRGGBB):"
+        },
+        "default_fit": {
+            "zh": "默认图像适配：",
+            "en": "Default image fit:",
+            "ru": "Режим масштабирования по умолчанию:"
+        },
+        "auto_dir_placeholder": {
+            "zh": "启动时自动进入",
+            "en": "Directory to open on startup",
+            "ru": "Каталог, открываемый при старте"
+        },
+        "scale_combo": {
+            "zh": "缩放模式选择",
+            "en": "Scale mode",
+            "ru": "Режим масштабирования"
+        },
+        "image_placeholder": {
+            "zh": "选择图片查看",
+            "en": "Select an image to view",
+            "ru": "Выберите изображение для просмотра"
+        }
     },
-    "help": {
-      "zh": "❔",
-      "en": "❔",
-      "ru": "❔"
+    "scale_options": {
+        "fit_page": {
+            "zh": "适应全页",
+            "en": "Fit page",
+            "ru": "По странице"
+        },
+        "fit_height": {
+            "zh": "适应高",
+            "en": "Fit height",
+            "ru": "По высоте"
+        },
+        "fit_width": {
+            "zh": "适应宽",
+            "en": "Fit width",
+            "ru": "По ширине"
+        },
+        "custom_percent": {
+            "zh": "自定义 (%)",
+            "en": "Custom (%)",
+            "ru": "Пользовательский (%)"
+        }
     },
-    "help_tooltip": {
-      "zh": "查看帮助",
-      "en": "Open help",
-      "ru": "Открыть справку"
+    "shortcuts": {
+        "prev_page": {
+            "zh": "上一页",
+            "en": "Previous page",
+            "ru": "Предыдущая страница"
+        },
+        "next_page": {
+            "zh": "下一页",
+            "en": "Next page",
+            "ru": "Следующая страница"
+        },
+        "prev_archive": {
+            "zh": "上一个压缩包",
+            "en": "Previous archive",
+            "ru": "Предыдущий архив"
+        },
+        "next_archive": {
+            "zh": "下一个压缩包",
+            "en": "Next archive",
+            "ru": "Следующий архив"
+        },
+        "reset_zoom": {
+            "zh": "重置缩放",
+            "en": "Reset zoom",
+            "ru": "Сбросить масштаб"
+        },
+        "set_100": {
+            "zh": "设为 100%",
+            "en": "Set to 100%",
+            "ru": "Установить 100%"
+        }
     },
-    "settings": {
-      "zh": "⚙️",
-      "en": "⚙️",
-      "ru": "⚙️"
-    },
-    "settings_tooltip": {
-      "zh": "打开设置面板",
-      "en": "Open settings",
-      "ru": "Открыть настройки"
-    },
-    "fullscreen": {
-      "zh": "⛶",
-      "en": "⛶",
-      "ru": "⛶"
-    },
-    "fullscreen_tooltip": {
-      "zh": "切换全屏 (F11)",
-      "en": "Toggle fullscreen (F11)",
-      "ru": "Переключить полноэкранный режим (F11)"
-    },
-    "close_all": {
-      "zh": "🧹",
-      "en": "🧹",
-      "ru": "🧹"
-    },
-    "close_all_tooltip": {
-      "zh": "关闭所有已打开的压缩包",
-      "en": "Close all opened archives",
-      "ru": "Закрыть все открытые архивы"
-    },
-    "choose": {
-      "zh": "选择...",
-      "en": "Choose...",
-      "ru": "Выбрать..."
-    },
-    "choose_color": {
-      "zh": "选择颜色",
-      "en": "Choose color",
-      "ru": "Выбрать цвет"
-    },
-    "save": {
-      "zh": "保存",
-      "en": "Save",
-      "ru": "Сохранить"
-    },
-    "cancel": {
-      "zh": "取消",
-      "en": "Cancel",
-      "ru": "Отмена"
-    },
-    "thumbs_tooltip": {
-      "zh": "打开缩略图面板",
-      "en": "Open archive thumbnails",
-      "ru": "Открыть миниатюры архива"
-    }
-  },
-  "labels": {
-    "file_list": {
-      "zh": "文件列表",
-      "en": "File list",
-      "ru": "Список файлов"
-    },
-    "auto_open_dir": {
-      "zh": "自动打开目录：",
-      "en": "Auto-open directory:",
-      "ru": "Каталог для автозагрузки:"
-    },
-    "bg_color": {
-      "zh": "背景颜色 (#RRGGBB)：",
-      "en": "Background color (#RRGGBB):",
-      "ru": "Цвет фона (#RRGGBB):"
-    },
-    "default_fit": {
-      "zh": "默认图像适配：",
-      "en": "Default image fit:",
-      "ru": "Режим масштабирования по умолчанию:"
-    },
-    "auto_dir_placeholder": {
-      "zh": "启动时自动进入",
-      "en": "Directory to open on startup",
-      "ru": "Каталог, открываемый при старте"
-    },
-    "scale_combo": {
-      "zh": "缩放模式选择",
-      "en": "Scale mode",
-      "ru": "Режим масштабирования"
-    },
-    "image_placeholder": {
-      "zh": "选择图片查看",
-      "en": "Select an image to view",
-      "ru": "Выберите изображение для просмотра"
-    }
-  },
-  "scale_options": {
-    "fit_page": {
-      "zh": "适应全页",
-      "en": "Fit page",
-      "ru": "По странице"
-    },
-    "fit_height": {
-      "zh": "适应高",
-      "en": "Fit height",
-      "ru": "По высоте"
-    },
-    "fit_width": {
-      "zh": "适应宽",
-      "en": "Fit width",
-      "ru": "По ширине"
-    },
-    "custom_percent": {
-      "zh": "自定义 (%)",
-      "en": "Custom (%)",
-      "ru": "Пользовательский (%)"
-    }
-  },
-  "shortcuts": {
-    "prev_page": {
-      "zh": "上一页",
-      "en": "Previous page",
-      "ru": "Предыдущая страница"
-    },
-    "next_page": {
-      "zh": "下一页",
-      "en": "Next page",
-      "ru": "Следующая страница"
-    },
-    "prev_archive": {
-      "zh": "上一个压缩包",
-      "en": "Previous archive",
-      "ru": "Предыдущий архив"
-    },
-    "next_archive": {
-      "zh": "下一个压缩包",
-      "en": "Next archive",
-      "ru": "Следующий архив"
-    },
-    "reset_zoom": {
-      "zh": "重置缩放",
-      "en": "Reset zoom",
-      "ru": "Сбросить масштаб"
-    },
-    "set_100": {
-      "zh": "设为 100%",
-      "en": "Set to 100%",
-      "ru": "Установить 100%"
-    }
-  },
-  "dialogs": {
-    "help_html": {
-      "zh": "<h3>简单漫画阅读器</h3>\n"
-            f"<p><b>版本：</b> {APP_VERSION}</p>\n"
-            "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
-            "<hr>\n"
-            "<p><b>使用说明：</b></p>\n"
-            "<ul>\n"
-            "<li><b>← / →</b>：上一页 / 下一页</li>\n"
-            "<li><b>↑ / ↓</b>：上一个 / 下一个压缩包</li>\n"
-            "<li><b>单击支持的文件</b>：展开或打开支持的文件</li>\n"
-            "<li><b>右键</b>：显示操作菜单</li>\n"
-            "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
-            "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
-            "<li><b>Ctrl + 滚轮：</b> 快速调整缩放（每格 ±10%）</li>\n"
-            "<li><b>左右边缘点击：</b> 点击图片区域左右边缘可翻页</li>\n"
-            "<li><b>F11 或 ⛶ 按钮：</b> 切换全屏 / 退出全屏</li>\n"
-            "<li><b>隐藏文件面板：</b> 通过右键菜单或拖拽左右中间的分隔线至最左</li>\n"
-            "<li><b>显示文件面板：</b> 通过右键菜单或从最左边缘拖拽分隔线向右</li>\n"
-            "</ul>\n"
-            "<h4>支持的文件类型</h4>\n"
-            "<ul>\n"
-            "<li>图片：.jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>压缩包：.zip, .cbz（单击可展开查看内部图片）</li>\n"
-            "<li>PDF 文档：.pdf（单击可展开逐页查看）</li>\n"
-            "</ul>\n"
-            "<hr>\n"
-            "<p>程序记忆设置保存到 <code>config.ini</code> 文件中。</p>",
+    "dialogs": {
+        "help_html": {
+            "zh": "<h3>简单漫画阅读器</h3>\n"
+                  f"<p><b>版本：</b> {APP_VERSION}</p>\n"
+                  "<p><b>开发者：</b> Setsuna (github@puffdayo)</p>\n"
+                  "<hr>\n"
+                  "<p><b>使用说明：</b></p>\n"
+                  "<ul>\n"
+                  "<li><b>← / →</b>：上一页 / 下一页</li>\n"
+                  "<li><b>↑ / ↓</b>：上一个 / 下一个压缩包</li>\n"
+                  "<li><b>单击支持的文件</b>：展开或打开支持的文件</li>\n"
+                  "<li><b>右键</b>：显示操作菜单</li>\n"
+                  "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
+                  "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
+                  "<li><b>Ctrl + 滚轮：</b> 快速调整缩放（每格 ±10%）</li>\n"
+                  "<li><b>左右边缘点击：</b> 点击图片区域左右边缘可翻页</li>\n"
+                  "<li><b>F11 或 ⛶ 按钮：</b> 切换全屏 / 退出全屏</li>\n"
+                  "<li><b>隐藏文件面板：</b> 通过右键菜单或拖拽左右中间的分隔线至最左</li>\n"
+                  "<li><b>显示文件面板：</b> 通过右键菜单或从最左边缘拖拽分隔线向右</li>\n"
+                  "</ul>\n"
+                  "<h4>支持的文件类型</h4>\n"
+                  "<ul>\n"
+                  "<li>图片：.jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
+                  "<li>压缩包：.zip, .cbz（单击可展开查看内部图片）</li>\n"
+                  "<li>PDF 文档：.pdf（单击可展开逐页查看）</li>\n"
+                  "</ul>\n"
+                  "<hr>\n"
+                  "<p>程序记忆设置保存到 <code>config.ini</code> 文件中。</p>",
 
-      "en": "<h3>Simple Comic Reader</h3>\n"
-            f"<p><b>Version:</b> {APP_VERSION}</p>\n"
-            "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
-            "<hr>\n"
-            "<p><b>Usage:</b></p>\n"
-            "<ul>\n"
-            "<li><b>← / →</b>: Previous / Next page</li>\n"
-            "<li><b>↑ / ↓</b>: Previous / Next archive</li>\n"
-            "<li><b>Click supported files</b>: Expand or open supported files</li>\n"
-            "<li><b>Right-click</b>: Show action menu</li>\n"
-            "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
-            "<li><b>Mouse wheel:</b> Pan when image exceeds window</li>\n"
-            "<li><b>Ctrl + Wheel:</b> Adjust zoom quickly (±10% per notch)</li>\n"
-            "<li><b>Edge clicks:</b> Click left/right edges to flip pages</li>\n"
-            "<li><b>F11 or ⛶ button:</b> Toggle fullscreen</li>\n"
-            "<li><b>Hide file panel:</b> Use context menu or drag splitter left</li>\n"
-            "<li><b>Show file panel:</b> Drag splitter right from far left</li>\n"
-            "</ul>\n"
-            "<h4>Supported file types</h4>\n"
-            "<ul>\n"
-            "<li>Images: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>Archives: .zip, .cbz (click to expand and view contained images)</li>\n"
-            "<li>PDF: .pdf (click to expand and view page-by-page)</li>\n"
-            "</ul>\n"
-            "<hr>\n"
-            "<p>Program stores settings in <code>config.ini</code>.</p>",
+            "en": "<h3>Simple Comic Reader</h3>\n"
+                  f"<p><b>Version:</b> {APP_VERSION}</p>\n"
+                  "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
+                  "<hr>\n"
+                  "<p><b>Usage:</b></p>\n"
+                  "<ul>\n"
+                  "<li><b>← / →</b>: Previous / Next page</li>\n"
+                  "<li><b>↑ / ↓</b>: Previous / Next archive</li>\n"
+                  "<li><b>Click supported files</b>: Expand or open supported files</li>\n"
+                  "<li><b>Right-click</b>: Show action menu</li>\n"
+                  "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
+                  "<li><b>Mouse wheel:</b> Pan when image exceeds window</li>\n"
+                  "<li><b>Ctrl + Wheel:</b> Adjust zoom quickly (±10% per notch)</li>\n"
+                  "<li><b>Edge clicks:</b> Click left/right edges to flip pages</li>\n"
+                  "<li><b>F11 or ⛶ button:</b> Toggle fullscreen</li>\n"
+                  "<li><b>Hide file panel:</b> Use context menu or drag splitter left</li>\n"
+                  "<li><b>Show file panel:</b> Drag splitter right from far left</li>\n"
+                  "</ul>\n"
+                  "<h4>Supported file types</h4>\n"
+                  "<ul>\n"
+                  "<li>Images: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
+                  "<li>Archives: .zip, .cbz (click to expand and view contained images)</li>\n"
+                  "<li>PDF: .pdf (click to expand and view page-by-page)</li>\n"
+                  "</ul>\n"
+                  "<hr>\n"
+                  "<p>Program stores settings in <code>config.ini</code>.</p>",
 
-      "ru": "<h3>Простой просмотрщик комиксов</h3>\n"
-            f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
-            "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
-            "<hr>\n"
-            "<p><b>Инструкция:</b></p>\n"
-            "<ul>\n"
-            "<li><b>← / →</b>: Предыдущая / Следующая страница</li>\n"
-            "<li><b>↑ / ↓</b>: Предыдущий / Следующий архив</li>\n"
-            "<li><b>Клик по поддерживаемым файлам</b>: открыть или развернуть их</li>\n"
-            "<li><b>Правый клик</b>: Показать меню действий</li>\n"
-            "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
-            "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
-            "<li><b>Ctrl + Колесо:</b> Быстрое изменение масштаба (±10% за шаг)</li>\n"
-            "<li><b>Клики по краям:</b> Нажатие слева/справа для перелистывания</li>\n"
-            "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
-            "<li><b>Скрыть панель файлов:</b> Через контекстное меню или переместить разделитель влево</li>\n"
-            "<li><b>Показать панель файлов:</b> Переместить разделитель вправо от самого левого края</li>\n"
-            "</ul>\n"
-            "<h4>Поддерживаемые типы файлов</h4>\n"
-            "<ul>\n"
-            "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
-            "<li>Архивы: .zip, .cbz (клик — раскрыть и просмотреть файлы внутри)</li>\n"
-            "<li>PDF: .pdf (клик — просмотреть постранично)</li>\n"
-            "</ul>\n"
-            "<hr>\n"
-            "<p>Программа сохраняет настройки в файле <code>config.ini</code>.</p>"
+            "ru": "<h3>Простой просмотрщик комиксов</h3>\n"
+                  f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
+                  "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
+                  "<hr>\n"
+                  "<p><b>Инструкция:</b></p>\n"
+                  "<ul>\n"
+                  "<li><b>← / →</b>: Предыдущая / Следующая страница</li>\n"
+                  "<li><b>↑ / ↓</b>: Предыдущий / Следующий архив</li>\n"
+                  "<li><b>Клик по поддерживаемым файлам</b>: открыть или развернуть их</li>\n"
+                  "<li><b>Правый клик</b>: Показать меню действий</li>\n"
+                  "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
+                  "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
+                  "<li><b>Ctrl + Колесо:</b> Быстрое изменение масштаба (±10% за шаг)</li>\n"
+                  "<li><b>Клики по краям:</b> Нажатие слева/справа для перелистывания</li>\n"
+                  "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
+                  "<li><b>Скрыть панель файлов:</b> Через контекстное меню или переместить разделитель влево</li>\n"
+                  "<li><b>Показать панель файлов:</b> Переместить разделитель вправо от самого левого края</li>\n"
+                  "</ul>\n"
+                  "<h4>Поддерживаемые типы файлов</h4>\n"
+                  "<ul>\n"
+                  "<li>Изображения: .jpg, .jpeg, .png, .gif, .bmp, .webp</li>\n"
+                  "<li>Архивы: .zip, .cbz (клик — раскрыть и просмотреть файлы внутри)</li>\n"
+                  "<li>PDF: .pdf (клик — просмотреть постранично)</li>\n"
+                  "</ul>\n"
+                  "<hr>\n"
+                  "<p>Программа сохраняет настройки в файле <code>config.ini</code>.</p>"
+        },
+        "settings_title": {
+            "zh": "设置",
+            "en": "Settings",
+            "ru": "Настройки"
+        },
+        "about_title": {
+            "zh": "关于 简单漫画阅读器",
+            "en": "About Simple Comic Reader",
+            "ru": "О Программе"
+        },
+        "help_title": {
+            "zh": "帮助",
+            "en": "Help",
+            "ru": "Справка"
+        },
+        "thumbnails_title": {
+            "zh": "缩略图",
+            "en": "Thumbnails",
+            "ru": "Миниатюры"
+        },
+        "thumbnails_no_images": {
+            "zh": "未找到可用的缩略图。",
+            "en": "No thumbnails found.",
+            "ru": "Миниатюр не найдено."
+        },
+        "thumbnails_loading": {
+            "zh": "正在生成缩略图…",
+            "en": "Loading thumbnails…",
+            "ru": "Загрузка миниатюр…"
+        },
+        "info_saved": {
+            "zh": "设置已保存",
+            "en": "Settings saved",
+            "ru": "Настройки сохранены"
+        },
+        "info_saved_details": {
+            "zh": "设置已保存并应用。",
+            "en": "Settings have been saved and applied.",
+            "ru": "Настройки сохранены и применены."
+        },
+        "info_close_archives": {
+            "zh": "所有已打开的压缩包已关闭。",
+            "en": "All opened archives have been closed.",
+            "ru": "Все открытые архивы закрыты."
+        },
+        "warning_zip_failed": {
+            "zh": "解压失败: {error}",
+            "en": "Failed to extract: {error}",
+            "ru": "Не удалось распаковать: {error}"
+        },
+        "warning_load_failed": {
+            "zh": "加载图片失败: {error}",
+            "en": "Failed to load image: {error}",
+            "ru": "Не удалось загрузить изображение: {error}"
+        },
+        "warning_save_failed": {
+            "zh": "保存设置失败: {error}",
+            "en": "Failed to save settings: {error}",
+            "ru": "Не удалось сохранить настройки: {error}"
+        },
+        "info_clipboard_empty": {
+            "zh": "当前没有可复制的图片。",
+            "en": "No image available to copy.",
+            "ru": "Нет изображения для копирования."
+        },
+        "info_copied": {
+            "zh": "图片已复制到剪贴板。",
+            "en": "Image copied to clipboard.",
+            "ru": "Изображение скопировано в буфер обмена."
+        }
     },
-    "settings_title": {
-      "zh": "设置",
-      "en": "Settings",
-      "ru": "Настройки"
+    "context_menu": {
+        "refresh": {
+            "zh": "刷新",
+            "en": "Refresh",
+            "ru": "Обновить"
+        },
+        "copy_image": {
+            "zh": "复制图片",
+            "en": "Copy image",
+            "ru": "Копировать изображение"
+        },
+        "show_hide_file_panel": {
+            "zh": "显隐文件面板",
+            "en": "Toggle file panel",
+            "ru": "Показать/скрыть панель файлов"
+        },
+        "fit_page": {
+            "zh": "适应全页",
+            "en": "Fit page",
+            "ru": "По странице"
+        },
+        "fit_height": {
+            "zh": "适应高",
+            "en": "Fit height",
+            "ru": "По высоте"
+        },
+        "fit_width": {
+            "zh": "适应宽",
+            "en": "Fit width",
+            "ru": "По ширине"
+        },
+        "reset_zoom": {
+            "zh": "重置缩放",
+            "en": "Reset zoom",
+            "ru": "Сбросить масштаб"
+        },
+        "percent_options": {
+            "zh": "百分比：50%, 75%, 100%, 125%, 150%, 200%",
+            "en": "Percent options: 50%, 75%, 100%, 125%, 150%, 200%",
+            "ru": "Проценты: 50%, 75%, 100%, 125%, 150%, 200%"
+        },
+        "previous": {
+            "zh": "上一页",
+            "en": "Previous",
+            "ru": "Предыдущая"
+        },
+        "next": {
+            "zh": "下一页",
+            "en": "Next",
+            "ru": "Следующая"
+        },
+        "sort_by_date": {
+            "zh": "按日期排序",
+            "en": "Sort by date",
+            "ru": "Сортировать по дате"
+        }
     },
-    "about_title": {
-      "zh": "关于 简单漫画阅读器",
-      "en": "About Simple Comic Reader",
-      "ru": "О Программе"
+    "tree": {
+        "expand_zip_prefix": {
+            "zh": "展开: ",
+            "en": "Expanded: ",
+            "ru": "Открыто: "
+        },
+        "zip_icon_tooltip": {
+            "zh": "双击 ZIP 文件：展开查看内部图片",
+            "en": "Double-click ZIP to expand and view contained images",
+            "ru": "Двойной клик по ZIP — открыть и просмотреть файлы внутри"
+        }
     },
-    "help_title": {
-      "zh": "帮助",
-      "en": "Help",
-      "ru": "Справка"
+    "edge_click": {
+        "left_area_tooltip": {
+            "zh": "点击左侧翻页（上一页）",
+            "en": "Click left edge to go to previous page",
+            "ru": "Клик слева — предыдущая страница"
+        },
+        "right_area_tooltip": {
+            "zh": "点击右侧翻页（下一页）",
+            "en": "Click right edge to go to next page",
+            "ru": "Клик справа — следующая страница"
+        }
     },
-    "thumbnails_title": {
-      "zh": "缩略图",
-      "en": "Thumbnails",
-      "ru": "Миниатюры"
+    "messages": {
+        "no_selection": {
+            "zh": "未选择任何文件",
+            "en": "No file selected",
+            "ru": "Файл не выбран"
+        },
+        "invalid_color": {
+            "zh": "无效的颜色值，使用默认背景。",
+            "en": "Invalid color value, using default background.",
+            "ru": "Недопустимое значение цвета, используется фон по умолчанию."
+        },
+        "config_written_default": {
+            "zh": "已写入默认配置到 config.ini",
+            "en": "Default configuration written to config.ini",
+            "ru": "Файл config.ini создан с настройками по умолчанию"
+        },
+        "thumbs_reload_failed": {
+            "zh": "缩略图加载失败：{error}",
+            "en": "Thumbnail load failed: {error}",
+            "ru": "Ошибка загрузки миниатюр: {error}"
+        }
     },
-    "thumbnails_no_images": {
-      "zh": "未找到可用的缩略图。",
-      "en": "No thumbnails found.",
-      "ru": "Миниатюр не найдено."
-    },
-    "thumbnails_loading": {
-      "zh": "正在生成缩略图…",
-      "en": "Loading thumbnails…",
-      "ru": "Загрузка миниатюр…"
-    },
-    "info_saved": {
-      "zh": "设置已保存",
-      "en": "Settings saved",
-      "ru": "Настройки сохранены"
-    },
-    "info_saved_details": {
-      "zh": "设置已保存并应用。",
-      "en": "Settings have been saved and applied.",
-      "ru": "Настройки сохранены и применены."
-    },
-    "info_close_archives": {
-      "zh": "所有已打开的压缩包已关闭。",
-      "en": "All opened archives have been closed.",
-      "ru": "Все открытые архивы закрыты."
-    },
-    "warning_zip_failed": {
-      "zh": "解压失败: {error}",
-      "en": "Failed to extract: {error}",
-      "ru": "Не удалось распаковать: {error}"
-    },
-    "warning_load_failed": {
-      "zh": "加载图片失败: {error}",
-      "en": "Failed to load image: {error}",
-      "ru": "Не удалось загрузить изображение: {error}"
-    },
-    "warning_save_failed": {
-      "zh": "保存设置失败: {error}",
-      "en": "Failed to save settings: {error}",
-      "ru": "Не удалось сохранить настройки: {error}"
-    },
-    "info_clipboard_empty": {
-      "zh": "当前没有可复制的图片。",
-      "en": "No image available to copy.",
-      "ru": "Нет изображения для копирования."
-    },
-    "info_copied": {
-      "zh": "图片已复制到剪贴板。",
-      "en": "Image copied to clipboard.",
-      "ru": "Изображение скопировано в буфер обмена."
+    "placeholders_and_helpers": {
+        "help_usage_shortcuts": {
+            "zh": "← / →：上一页 / 下一页；↑ / ↓：上一个 / 下一个压缩包；F11：全屏",
+            "en": "← / →: prev/next page; ↑ / ↓: prev/next archive; F11: fullscreen",
+            "ru": "← / →: предыдущая/следующая страница; ↑ / ↓: предыдущий/следующий архив; F11: полноэкранный"
+        },
+        "help_note": {
+            "zh": "程序记忆设置到 config.ini 文件中。",
+            "en": "Program stores settings in config.ini.",
+            "ru": "Программа сохраняет настройки в config.ini."
+        }
     }
-  },
-  "context_menu": {
-    "refresh": {
-        "zh": "刷新",
-        "en": "Refresh",
-        "ru": "Обновить"
-    },
-    "copy_image": {
-      "zh": "复制图片",
-      "en": "Copy image",
-      "ru": "Копировать изображение"
-    },
-    "show_hide_file_panel": {
-      "zh": "显隐文件面板",
-      "en": "Toggle file panel",
-      "ru": "Показать/скрыть панель файлов"
-    },
-    "fit_page": {
-      "zh": "适应全页",
-      "en": "Fit page",
-      "ru": "По странице"
-    },
-    "fit_height": {
-      "zh": "适应高",
-      "en": "Fit height",
-      "ru": "По высоте"
-    },
-    "fit_width": {
-      "zh": "适应宽",
-      "en": "Fit width",
-      "ru": "По ширине"
-    },
-    "reset_zoom": {
-      "zh": "重置缩放",
-      "en": "Reset zoom",
-      "ru": "Сбросить масштаб"
-    },
-    "percent_options": {
-      "zh": "百分比：50%, 75%, 100%, 125%, 150%, 200%",
-      "en": "Percent options: 50%, 75%, 100%, 125%, 150%, 200%",
-      "ru": "Проценты: 50%, 75%, 100%, 125%, 150%, 200%"
-    },
-    "previous": {
-      "zh": "上一页",
-      "en": "Previous",
-      "ru": "Предыдущая"
-    },
-    "next": {
-      "zh": "下一页",
-      "en": "Next",
-      "ru": "Следующая"
-    },
-    "sort_by_date": {
-      "zh": "按日期排序",
-      "en": "Sort by date",
-      "ru": "Сортировать по дате"
-    }
-  },
-  "tree": {
-    "expand_zip_prefix": {
-      "zh": "展开: ",
-      "en": "Expanded: ",
-      "ru": "Открыто: "
-    },
-    "zip_icon_tooltip": {
-      "zh": "双击 ZIP 文件：展开查看内部图片",
-      "en": "Double-click ZIP to expand and view contained images",
-      "ru": "Двойной клик по ZIP — открыть и просмотреть файлы внутри"
-    }
-  },
-  "edge_click": {
-    "left_area_tooltip": {
-      "zh": "点击左侧翻页（上一页）",
-      "en": "Click left edge to go to previous page",
-      "ru": "Клик слева — предыдущая страница"
-    },
-    "right_area_tooltip": {
-      "zh": "点击右侧翻页（下一页）",
-      "en": "Click right edge to go to next page",
-      "ru": "Клик справа — следующая страница"
-    }
-  },
-  "messages": {
-    "no_selection": {
-      "zh": "未选择任何文件",
-      "en": "No file selected",
-      "ru": "Файл не выбран"
-    },
-    "invalid_color": {
-      "zh": "无效的颜色值，使用默认背景。",
-      "en": "Invalid color value, using default background.",
-      "ru": "Недопустимое значение цвета, используется фон по умолчанию."
-    },
-    "config_written_default": {
-      "zh": "已写入默认配置到 config.ini",
-      "en": "Default configuration written to config.ini",
-      "ru": "Файл config.ini создан с настройками по умолчанию"
-    },
-    "thumbs_reload_failed": {
-      "zh": "缩略图加载失败：{error}",
-      "en": "Thumbnail load failed: {error}",
-      "ru": "Ошибка загрузки миниатюр: {error}"
-    }
-  },
-  "placeholders_and_helpers": {
-    "help_usage_shortcuts": {
-      "zh": "← / →：上一页 / 下一页；↑ / ↓：上一个 / 下一个压缩包；F11：全屏",
-      "en": "← / →: prev/next page; ↑ / ↓: prev/next archive; F11: fullscreen",
-      "ru": "← / →: предыдущая/следующая страница; ↑ / ↓: предыдущий/следующий архив; F11: полноэкранный"
-    },
-    "help_note": {
-      "zh": "程序记忆设置到 config.ini 文件中。",
-      "en": "Program stores settings in config.ini.",
-      "ru": "Программа сохраняет настройки в config.ini."
-    }
-  }
 }
+
 
 def get_system_lang():
     loc = QLocale.system()
@@ -613,6 +620,7 @@ def get_system_lang():
 
 lang = get_system_lang()
 
+
 def load_lang_from_JSON(lang):
     flat_ui = {}
 
@@ -644,7 +652,9 @@ def load_lang_from_JSON(lang):
     recurse("", UI_JSON)
     return flat_ui
 
+
 UI = load_lang_from_JSON(lang)
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, config=None):
@@ -660,10 +670,12 @@ class SettingsDialog(QDialog):
         self.auto_dir_edit.setPlaceholderText(UI['labels_auto_dir_placeholder'])
 
         browse_btn = QPushButton(UI['buttons_choose'])
+
         def pick_dir():
             d = QFileDialog.getExistingDirectory(self, UI['labels_auto_open_dir'])
             if d:
                 self.auto_dir_edit.setText(d)
+
         browse_btn.clicked.connect(pick_dir)
 
         row_widget = QWidget()
@@ -677,24 +689,25 @@ class SettingsDialog(QDialog):
 
         self.bg_color_edit = QLineEdit(self)
         color_btn = QPushButton(UI['buttons_choose_color'])
+
         def pick_color():
             col = QColorDialog.getColor()
             if col.isValid():
                 hexc = col.name()
                 self.bg_color_edit.setText(hexc)
+
         color_btn.clicked.connect(pick_color)
         color_row = QWidget()
         color_row_layout = QHBoxLayout(color_row)
-        color_row_layout.setContentsMargins(0,0,0,0)
+        color_row_layout.setContentsMargins(0, 0, 0, 0)
         color_row_layout.addWidget(self.bg_color_edit)
         color_row_layout.addWidget(color_btn)
         layout.addRow(UI['labels_bg_color'], color_row)
 
-
         self.fit_combo = QComboBox(self)
-        self.fit_combo.addItems([UI['scale_options_fit_page'], 
-                                UI['scale_options_fit_height'],
-                                UI['scale_options_fit_width']])
+        self.fit_combo.addItems([UI['scale_options_fit_page'],
+                                 UI['scale_options_fit_height'],
+                                 UI['scale_options_fit_width']])
         layout.addRow(UI['labels_default_fit'], self.fit_combo)
 
         self.ks_prev = QKeySequenceEdit(self)
@@ -851,7 +864,7 @@ class ImageLabel(QLabel):
             reset_act = QAction(UI['shortcuts_reset_zoom'], self)
             reset_act.triggered.connect(lambda: mw.set_scale_mode("fit_page"))
             menu.addAction(reset_act)
-            
+
             clear_cache_act = QAction(UI['context_menu_refresh'], self)
             clear_cache_act.triggered.connect(lambda: mw.clear_cache_and_rerender())
             menu.addAction(clear_cache_act)
@@ -871,12 +884,10 @@ class EdgeClickArea(QWidget):
         self.fixed_width = int(fixed_width)
         self.percent_width = float(percent_width) if percent_width is not None else None
 
-
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.setCursor(QCursor(Qt.PointingHandCursor))
-
 
         self.setMouseTracking(True)
         self.show()
@@ -884,7 +895,6 @@ class EdgeClickArea(QWidget):
     def sizeHint(self):
         parent = self.parent()
         if parent:
-
             w = self._computed_width(parent.width())
             return QSize(w, parent.height())
         return QSize(self.fixed_width, 200)
@@ -958,8 +968,48 @@ class _PdfRenderTask(QRunnable):
                 pass
 
 
+class _ImageRenderTask(QRunnable):
+    def __init__(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int, sig):
+        super().__init__()
+        self.zip_path_str = zip_path_str
+        self.inner_name = inner_name
+        self.target_w = int(target_w)
+        self.target_h = int(target_h)
+        self.sig = sig
+
+    def run(self):
+        try:
+            with zipfile.ZipFile(self.zip_path_str, 'r') as zf:
+                with zf.open(self.inner_name) as f:
+                    data = f.read()
+            qimg = QImage.fromData(data)
+            if qimg is None or qimg.isNull():
+                try:
+                    self.sig.finished.emit(self.zip_path_str, self.inner_name, QImage())
+                except Exception:
+                    pass
+                return
+
+            if self.target_w > 0 and self.target_h > 0:
+                qimg = qimg.scaled(self.target_w, self.target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            try:
+                self.sig.finished.emit(self.zip_path_str, self.inner_name, qimg)
+            except Exception:
+                pass
+        except Exception:
+            try:
+                self.sig.finished.emit(self.zip_path_str, self.inner_name, QImage())
+            except Exception:
+                pass
+
+
+class _ImageRenderSignal(QObject):
+    finished = Signal(str, str, QImage)  # zip_path_str, inner_name, QImage
+
+
 class ThumbnailLabel(QLabel):
     clicked = Signal(object)
+
     def __init__(self, payload=None, parent=None):
         super().__init__(parent)
         self.payload = payload
@@ -973,13 +1023,13 @@ class ThumbnailLabel(QLabel):
             self.clicked.emit(self.payload)
         else:
             super().mousePressEvent(event)
-            
+
 
 class ThumbnailSignals(QObject):
     thumb_ready = Signal(object)
     finished = Signal(list)
     error = Signal(str)
-    
+
 
 class ThumbnailLoadTask(QRunnable):
     def __init__(self, dir_path: Path, thumb_w: int, thumb_h: int, signals: ThumbnailSignals, cancel_cb=None):
@@ -1029,7 +1079,9 @@ class ThumbnailLoadTask(QRunnable):
                 if ext in {'.zip', '.cbz'}:
                     try:
                         with zipfile.ZipFile(str(p), 'r') as zf:
-                            names = [n for n in zf.namelist() if os.path.basename(n) and os.path.basename(n).lower().endswith(('.jpg','.jpeg','.png','.gif','.bmp','.webp'))]
+                            names = [n for n in zf.namelist() if
+                                     os.path.basename(n) and os.path.basename(n).lower().endswith(
+                                         ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))]
                             if not names:
                                 continue
                             names.sort(key=natural_sort_key)
@@ -1096,7 +1148,7 @@ class ThumbnailLoadTask(QRunnable):
             self.signals.finished.emit(results)
         except Exception:
             pass
-            
+
 
 class ThumbnailDialog(QDialog):
     def __init__(self, parent, thumb_size=(240, 160), spacing=8):
@@ -1124,7 +1176,7 @@ class ThumbnailDialog(QDialog):
         self._thumb_task_cancelled = False
         self._thumb_task = None
         self._thumb_signals = None
-        
+
     def clear_thumbs(self):
         self._thumb_task_cancelled = True
         self._thumb_task = None
@@ -1160,7 +1212,7 @@ class ThumbnailDialog(QDialog):
         lbl.setFixedSize(self.thumb_w, self.thumb_h + 22)
         frame = QWidget()
         v = QVBoxLayout(frame)
-        v.setContentsMargins(4,4,4,4)
+        v.setContentsMargins(4, 4, 4, 4)
         image_lbl = QLabel()
         image_lbl.setAlignment(Qt.AlignCenter)
         image_lbl.setPixmap(thumb)
@@ -1174,7 +1226,7 @@ class ThumbnailDialog(QDialog):
         frame.setFixedSize(self.thumb_w + 8, self.thumb_h + 24)
         click_wrapper = ThumbnailLabel(payload=key, parent=self.container)
         inner_layout = QVBoxLayout(click_wrapper)
-        inner_layout.setContentsMargins(0,0,0,0)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.addWidget(frame)
         click_wrapper.setFixedSize(frame.size())
         click_wrapper.clicked.connect(self.on_thumb_clicked)
@@ -1212,6 +1264,7 @@ class ThumbnailDialog(QDialog):
                 if not found_item:
                     for i in range(self.parent.tree.topLevelItemCount()):
                         top = self.parent.tree.topLevelItem(i)
+
                         def _rec_search(item):
                             nonlocal found_item
                             if found_item:
@@ -1225,6 +1278,7 @@ class ThumbnailDialog(QDialog):
                                 pass
                             for j in range(item.childCount()):
                                 _rec_search(item.child(j))
+
                         _rec_search(top)
                         if found_item:
                             break
@@ -1309,7 +1363,7 @@ class ThumbnailDialog(QDialog):
                     try:
                         self.parent.current_index = files.index(target_ref)
                     except ValueError:
-                        self.parent.current_index = max(0, min(len(files)-1, page_idx))
+                        self.parent.current_index = max(0, min(len(files) - 1, page_idx))
                         target_ref = files[self.parent.current_index] if files else target_ref
 
                     try:
@@ -1360,14 +1414,15 @@ class ThumbnailDialog(QDialog):
         signals = ThumbnailSignals()
         signals.thumb_ready.connect(self._on_thumb_ready)
         signals.finished.connect(self._on_thumbs_finished)
-        signals.error.connect(lambda e: None) # TODO: show error msg
+        signals.error.connect(lambda e: None)  # TODO: show error msg
 
         self._thumb_signals = signals
 
         def cancel_cb():
             return self._thumb_task_cancelled or (not self.isVisible())
 
-        task = ThumbnailLoadTask(dir_path=dir_path, thumb_w=self.thumb_w, thumb_h=self.thumb_h, signals=signals, cancel_cb=cancel_cb)
+        task = ThumbnailLoadTask(dir_path=dir_path, thumb_w=self.thumb_w, thumb_h=self.thumb_h, signals=signals,
+                                 cancel_cb=cancel_cb)
         self._thumb_task = task
 
         QThreadPool.globalInstance().start(task)
@@ -1467,15 +1522,23 @@ class ComicReader(QMainWindow):
 
         self.current_zip_obj = None
         self.current_zip_path = None
-        
+
         self.current_pdf_obj = None
         self.current_pdf_path = None
         self._pdf_pixmap_cache = collections.OrderedDict()
-        self._pdf_cache_max = 32
+        self._pdf_cache_max = 64
         self._render_pool = QThreadPool.globalInstance()
+        self._render_pool.setMaxThreadCount(4)
+
+        self._zip_img_cache = collections.OrderedDict()
+        self._zip_img_cache_max = 64
+        self._image_render_pool = QThreadPool.globalInstance()
+        self._image_render_pool.setMaxThreadCount(4)
+        self._image_render_signal = _ImageRenderSignal()
+        self._image_render_signal.finished.connect(self._on_image_render_finished)
 
         self.virtual_items = {}
-        
+
         self._thumbnail_dialog = None
 
         self.tree = QTreeWidget()
@@ -1488,7 +1551,7 @@ class ComicReader(QMainWindow):
         self.btn_open.setToolTip(UI['buttons_open_folder_tooltip'])
         self.btn_open.setFixedSize(32, 28)
         self.btn_open.clicked.connect(self.select_directory)
-        
+
         self.btn_thumbs = QPushButton("🖼️")
         self.btn_thumbs.setToolTip(UI['buttons_thumbs_tooltip'])
         self.btn_thumbs.setFixedSize(32, 28)
@@ -1516,9 +1579,9 @@ class ComicReader(QMainWindow):
         self.btn_close_all.clicked.connect(self.close_all_archives)
 
         self.scale_combo = QComboBox()
-        self.scale_combo.addItems([UI['scale_options_fit_page'], 
-                                UI['scale_options_fit_height'],
-                                UI['scale_options_fit_width']])
+        self.scale_combo.addItems([UI['scale_options_fit_page'],
+                                   UI['scale_options_fit_height'],
+                                   UI['scale_options_fit_width']])
         self.scale_combo.currentIndexChanged.connect(self.on_scale_mode_changed)
         self.scale_combo.setMinimumWidth(65)
 
@@ -1571,8 +1634,10 @@ class ComicReader(QMainWindow):
         self._viewport = self._scroll_area.viewport()
 
         default_percent = 0.12
-        self.left_arrow = EdgeClickArea(self._viewport, direction="left", callback=self.prev_page, percent_width=default_percent)
-        self.right_arrow = EdgeClickArea(self._viewport, direction="right", callback=self.next_page, percent_width=default_percent)
+        self.left_arrow = EdgeClickArea(self._viewport, direction="left", callback=self.prev_page,
+                                        percent_width=default_percent)
+        self.right_arrow = EdgeClickArea(self._viewport, direction="right", callback=self.next_page,
+                                         percent_width=default_percent)
 
         self._viewport.installEventFilter(self)
 
@@ -1584,7 +1649,7 @@ class ComicReader(QMainWindow):
         if auto_dir and Path(auto_dir).exists():
             self.current_dir = Path(auto_dir).resolve()
             self.load_directory()
-            
+
         self.setup_shortcuts()
 
         self._resize_timer = QTimer(self)
@@ -1645,7 +1710,6 @@ class ComicReader(QMainWindow):
 
         add_shortcut("F11", self.toggle_fullscreen)
 
-
     def toggle_fullscreen(self):
         if self.isFullScreen():
 
@@ -1674,12 +1738,11 @@ class ComicReader(QMainWindow):
             visible = self.left_panel.isVisible()
             self.left_panel.setVisible(not visible)
 
-
             self.position_overlays()
             self.display_current_pixmap()
         except Exception:
             pass
-        
+
     def _find_item_recursive(self, item: QTreeWidgetItem, target: str):
         if item is None:
             return None
@@ -1712,6 +1775,9 @@ class ComicReader(QMainWindow):
                 return
 
     def close_all_archives(self, from_refresh=False):
+        """
+        Close any opened zip/pdf, remove virtual tree items and clear related caches.
+        """
         try:
             if getattr(self, "_thumbnail_dialog", None):
                 try:
@@ -1719,7 +1785,7 @@ class ComicReader(QMainWindow):
                 except Exception:
                     pass
                 self._thumbnail_dialog = None
-            
+
             if self.current_zip_obj is not None:
                 try:
                     self.current_zip_obj.close()
@@ -1727,7 +1793,7 @@ class ComicReader(QMainWindow):
                     pass
                 self.current_zip_obj = None
                 self.current_zip_path = None
-                
+
             if self.current_pdf_obj is not None:
                 try:
                     self.current_pdf_obj.close()
@@ -1736,6 +1802,7 @@ class ComicReader(QMainWindow):
                 self.current_pdf_obj = None
                 self.current_pdf_path = None
 
+            # tree
             for zip_path in list(self.virtual_items.keys()):
                 virt = self.virtual_items.get(zip_path)
                 if virt:
@@ -1748,11 +1815,32 @@ class ComicReader(QMainWindow):
                         parent.removeChild(virt)
             self.virtual_items.clear()
 
+            # cache
+            try:
+                if hasattr(self, "_pdf_pixmap_cache"):
+                    self._pdf_pixmap_cache.clear()
+            except Exception:
+                try:
+                    self._pdf_pixmap_cache = collections.OrderedDict()
+                except Exception:
+                    pass
+
+            try:
+                if hasattr(self, "_zip_img_cache"):
+                    self._zip_img_cache.clear()
+            except Exception:
+                try:
+                    self._zip_img_cache = collections.OrderedDict()
+                except Exception:
+                    pass
 
             self.image_list = []
             self.current_index = 0
             self.current_pixmap = None
-            self.image_label.setPixmap(QPixmap())
+            try:
+                self.image_label.setPixmap(QPixmap())
+            except Exception:
+                pass
             self.hide_overlays()
 
             if not from_refresh:
@@ -1790,7 +1878,6 @@ class ComicReader(QMainWindow):
             QMessageBox.information(self, UI['dialogs_info_saved'],
                                     UI['dialogs_info_saved_details'])
 
-
     def load_config(self):
         parser = configparser.ConfigParser()
         if CONFIG_PATH.exists():
@@ -1814,9 +1901,7 @@ class ComicReader(QMainWindow):
             except Exception:
                 pass
 
-
         self.apply_settings()
-
 
     def save_config(self):
         parser = configparser.ConfigParser()
@@ -1832,7 +1917,6 @@ class ComicReader(QMainWindow):
         gen = self.config.get("general", {})
         sc = self.config.get("shortcuts", {})
 
-
         bg = gen.get("background_color", "#ffffff")
         try:
 
@@ -1840,7 +1924,6 @@ class ComicReader(QMainWindow):
             self._viewport.setStyleSheet(f"background-color: {bg};")
         except Exception:
             pass
-
 
         mode = gen.get("default_fit_mode", "fit_page")
         if mode in {"fit_page", "fit_height", "fit_width"}:
@@ -1852,7 +1935,6 @@ class ComicReader(QMainWindow):
                 self.scale_combo.setCurrentIndex(1)
             else:
                 self.scale_combo.setCurrentIndex(2)
-
 
         try:
             self.setup_shortcuts()
@@ -1867,12 +1949,12 @@ class ComicReader(QMainWindow):
     def select_directory(self):
         if getattr(self, "_loading_dir", False):
             return
-        
+
         dir_path = QFileDialog.getExistingDirectory(self, UI['buttons_open_folder_tooltip'])
         if dir_path:
             self.current_dir = Path(dir_path).resolve()
             self.load_directory()
-            
+
     def reload_directory(self):
         self.close_all_archives(from_refresh=True)
         self.load_directory()
@@ -1887,12 +1969,12 @@ class ComicReader(QMainWindow):
                 self._thumbnail_dialog = None
         except Exception:
             pass
-        
+
         if getattr(self, "_loading_dir", False):
             return
-        
+
         self._loading_dir = True
-        
+
         try:
             try:
                 self.tree.setUpdatesEnabled(False)
@@ -1926,7 +2008,7 @@ class ComicReader(QMainWindow):
                             elif de.is_file(follow_symlinks=False):
                                 name_lower = de.name.lower()
                                 if name_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')) \
-                                or name_lower.endswith(('.zip', '.cbz', '.pdf')):
+                                        or name_lower.endswith(('.zip', '.cbz', '.pdf')):
                                     entries.append(('f', de))
                         except Exception:
                             continue
@@ -2010,12 +2092,11 @@ class ComicReader(QMainWindow):
                 pass
             self._loading_dir = False
 
-
     def sort_key(self, path: Path):
         if self.sort_by_date:
             return path.stat().st_mtime
         return path.name.lower()
-    
+
     def sort_key(self, path_or_entry):
         try:
             if self.sort_by_date:
@@ -2142,7 +2223,6 @@ class ComicReader(QMainWindow):
                 self.current_pdf_obj = None
                 self.current_pdf_path = None
 
-
     def extract_pdf_to_tree(self, parent_item, pdf_path: Path):
         try:
             pdf_path = Path(pdf_path).resolve()
@@ -2188,7 +2268,7 @@ class ComicReader(QMainWindow):
 
             pdf_files = []
             for p in range(len(doc)):
-                label = f"Page {p+1}"
+                label = f"Page {p + 1}"
                 sub_item = QTreeWidgetItem([label])
                 sub_item.setData(0, Qt.UserRole, f"pdf://{pdf_path_str}:{p}")
                 virtual_item.addChild(sub_item)
@@ -2293,7 +2373,7 @@ class ComicReader(QMainWindow):
 
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_zip_failed'].format(error=str(e)))
-            
+
     def pre_render_adjacent_pages(self, pdf_path: str, page_num: int):
         try:
             pdf_path = str(Path(pdf_path).resolve())
@@ -2339,7 +2419,7 @@ class ComicReader(QMainWindow):
                 self.request_pdf_page_render(pdf_path, p, vw, vh)
             except Exception:
                 pass
-            
+
     def clear_cache_and_rerender(self):
         if not self.image_list or not (0 <= self.current_index < len(self.image_list)):
             QMessageBox.information(self, UI["app_window_title"], UI.get('messages_no_selection', "No file selected"))
@@ -2351,6 +2431,7 @@ class ComicReader(QMainWindow):
         except Exception:
             cur_str = ""
 
+        # pdf
         if cur_str.startswith("pdf://"):
             try:
                 before_last, p = cur_str.rsplit(":", 1)
@@ -2379,62 +2460,106 @@ class ComicReader(QMainWindow):
             except Exception:
                 vw, vh = 800, 600
 
-            pm = None
             try:
-                pm = self.request_pdf_page_render(pdf_path, page_num, vw, vh)
+                self.request_pdf_page_render(pdf_path, page_num, vw, vh)
             except Exception:
-                pm = None
+                pass
 
-            if pm:
-                self.current_pixmap = pm
-                self.display_current_pixmap()
+            try:
+                self.pre_render_adjacent_pages(pdf_path, page_num)
+            except Exception:
+                pass
 
             return
 
+        # zip
         if cur_str.startswith("zip://"):
             try:
-                self.load_image(cur_str)
-                QMessageBox.information(self, UI["app_window_title"], "Reloaded image from archive.")
-            except Exception as e:
-                QMessageBox.warning(self, UI["app_window_title"], f"Reload failed: {e}")
+                before_last, inner = cur_str.rsplit(":", 1)
+                zip_path = Path(before_last[6:]).resolve()
+                zip_path_str = str(zip_path)
+            except Exception:
+                QMessageBox.warning(self, UI["app_window_title"], "Invalid ZIP reference.")
+                return
+
+            try:
+                keys = list(self._zip_img_cache.keys())
+                for k in keys:
+                    if isinstance(k, tuple) and len(k) >= 1 and str(k[0]) == zip_path_str:
+                        try:
+                            self._zip_img_cache.pop(k)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            self.current_pixmap = None
+            self.image_label.setPixmap(QPixmap())
+            self.hide_overlays()
+
+            try:
+                viewport = self._scroll_area.viewport()
+                vw = max(1, viewport.width())
+                vh = max(1, viewport.height())
+            except Exception:
+                vw, vh = 800, 600
+
+            try:
+                self.request_zip_image_render(zip_path_str, inner, vw, vh)
+            except Exception:
+                pass
+
+            try:
+                self._prefetch_zip_neighbors(zip_path_str, inner, vw, vh)
+            except Exception:
+                pass
+
             return
 
+        # image file
         try:
             self.load_image(cur_str)
-            QMessageBox.information(self, UI["app_window_title"], "Reloaded image file.")
+
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"Reload failed: {e}")
-            
 
     def load_image(self, image_path):
         try:
             if isinstance(image_path, str) and image_path.startswith("zip://"):
-                # zip
                 before_last, file_in_zip = image_path.rsplit(":", 1)
                 zip_path = Path(before_last[6:]).resolve()
                 zip_path_str = str(zip_path)
 
-                if self.current_zip_obj is None or self.current_zip_path != zip_path_str:
-                    if self.current_zip_obj is not None:
+                viewport = self._scroll_area.viewport()
+                vw = max(1, viewport.width())
+                vh = max(1, viewport.height())
+
+                key = (zip_path_str, file_in_zip, vw, vh)
+                cached_qimg = self._zip_cache_get(key)
+                if cached_qimg:
+                    try:
+                        self.current_pixmap = QPixmap.fromImage(cached_qimg)
+                        self.display_current_pixmap()
                         try:
-                            self.current_zip_obj.close()
+                            self.select_tree_item_for_path(image_path)
                         except Exception:
                             pass
-                        self.current_zip_obj = None
-                        self.current_zip_path = None
-                    self.current_zip_obj = zipfile.ZipFile(zip_path_str, 'r')
-                    self.current_zip_path = zip_path_str
-
-                with self.current_zip_obj.open(file_in_zip) as f:
-                    data = f.read()
-                    pixmap = QPixmap()
-                    pixmap.loadFromData(data)
-                    self.current_pixmap = pixmap
-                    self.display_current_pixmap()
-                    try:
-                        self.select_tree_item_for_path(image_path)
+                        self._prefetch_zip_neighbors(zip_path_str, file_in_zip, vw, vh)
+                        return
                     except Exception:
                         pass
+
+                try:
+                    self.request_zip_image_render(zip_path_str, file_in_zip, vw, vh)
+                except Exception:
+                    pass
+
+                try:
+                    self._prefetch_zip_neighbors(zip_path_str, file_in_zip, vw, vh)
+                except Exception:
+                    pass
+                return
+
 
             elif isinstance(image_path, str) and image_path.startswith("pdf://"):
                 before_last, page_idx = image_path.rsplit(":", 1)
@@ -2498,6 +2623,38 @@ class ComicReader(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, UI["app_window_title"], f"{e}")
 
+    def _prefetch_zip_neighbors(self, zip_path_str: str, inner_name: str, vw: int, vh: int):
+        try:
+            virt = self.virtual_items.get(zip_path_str)
+            if not virt:
+                return
+            files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
+            target_ref = f"zip://{zip_path_str}:{inner_name}"
+            try:
+                idx = files.index(target_ref)
+            except ValueError:
+                idx = None
+                for i, it in enumerate(files):
+                    if it.endswith(inner_name):
+                        idx = i
+                        break
+                if idx is None:
+                    return
+            neighbors = []
+            if idx - 1 >= 0:
+                neighbors.append(files[idx - 1])
+            if idx + 1 < len(files):
+                neighbors.append(files[idx + 1])
+            for nref in neighbors:
+                try:
+                    _, inner = nref.rsplit(":", 1)
+                    # 请求缓存（非阻塞）
+                    self.request_zip_image_render(zip_path_str, inner, vw, vh)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def _cache_get(self, key):
         try:
             val = self._pdf_pixmap_cache.pop(key)
@@ -2506,13 +2663,65 @@ class ComicReader(QMainWindow):
         except KeyError:
             return None
 
+    def _zip_cache_get(self, key):
+        try:
+            val = self._zip_img_cache.pop(key)
+            self._zip_img_cache[key] = val
+            return val
+        except KeyError:
+            return None
+
+    def _zip_cache_put(self, key, qimage):
+        if key in self._zip_img_cache:
+            self._zip_img_cache.pop(key)
+        self._zip_img_cache[key] = qimage
+        while len(self._zip_img_cache) > self._zip_img_cache_max:
+            self._zip_img_cache.popitem(last=False)
+
+    def request_zip_image_render(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int):
+        key = (zip_path_str, inner_name, int(target_w), int(target_h))
+        cached = self._zip_cache_get(key)
+        if cached:
+            return cached
+        task = _ImageRenderTask(zip_path_str, inner_name, target_w, target_h, self._image_render_signal)
+        self._image_render_pool.start(task)
+        return None
+
+    def _on_image_render_finished(self, zip_path_str: str, inner_name: str, qimage: QImage):
+        try:
+            if qimage and not qimage.isNull():
+                key = (zip_path_str, inner_name, qimage.width(), qimage.height())
+                self._zip_cache_put(key, qimage)
+        except Exception:
+            pass
+
+        cur = None
+        if self.image_list and 0 <= self.current_index < len(self.image_list):
+            cur = self.image_list[self.current_index]
+        if isinstance(cur, str) and cur.startswith("zip://"):
+            before_last, inner = cur.rsplit(":", 1)
+            try:
+                cur_zip = str(Path(before_last[6:]).resolve())
+            except Exception:
+                cur_zip = None
+            if cur_zip == zip_path_str and inner == inner_name:
+                pm_qimg = self._zip_cache_get((zip_path_str, inner_name, qimage.width(), qimage.height()))
+                if pm_qimg is None:
+                    pm_qimg = qimage
+                try:
+                    pix = QPixmap.fromImage(pm_qimg)
+                    self.current_pixmap = pix
+                    self.display_current_pixmap()
+                except Exception:
+                    pass
+
     def _cache_put(self, key, pixmap):
         if key in self._pdf_pixmap_cache:
             self._pdf_pixmap_cache.pop(key)
         self._pdf_pixmap_cache[key] = pixmap
         while len(self._pdf_pixmap_cache) > self._pdf_cache_max:
             self._pdf_pixmap_cache.popitem(last=False)
-            
+
     def request_pdf_page_render(self, pdf_path: str, page_num: int, target_w: int, target_h: int):
         key = (pdf_path, page_num, int(target_w), int(target_h))
         cached = self._cache_get(key)
@@ -2524,7 +2733,7 @@ class ComicReader(QMainWindow):
         task = _PdfRenderTask(pdf_path, page_num, target_w, target_h, self._render_signal)
         self._render_pool.start(task)
         return None
-    
+
     def _on_pdf_render_finished(self, pdf_path: str, page_num: int, pixmap: QPixmap):
         if pixmap and not pixmap.isNull():
             key = (pdf_path, page_num, pixmap.width(), pixmap.height())
@@ -2545,7 +2754,6 @@ class ComicReader(QMainWindow):
                     self.current_pixmap = pm
                     self.display_current_pixmap()
 
-
     def display_current_pixmap(self):
         if self.current_pixmap is None:
             self.image_label.setPixmap(QPixmap())
@@ -2563,10 +2771,8 @@ class ComicReader(QMainWindow):
         orig_w = self.current_pixmap.width()
         orig_h = self.current_pixmap.height()
 
-
         v_scroll_w = scroll.verticalScrollBar().sizeHint().width()
         h_scroll_h = scroll.horizontalScrollBar().sizeHint().height()
-
 
         def scaled_size_by_width(target_w):
             target_h = round(orig_h * (target_w / orig_w))
@@ -2575,7 +2781,6 @@ class ComicReader(QMainWindow):
         def scaled_size_by_height(target_h):
             target_w = round(orig_w * (target_h / orig_h))
             return max(1, int(target_w)), max(1, int(target_h))
-
 
         if self.scale_mode == "fit_width":
 
@@ -2598,14 +2803,11 @@ class ComicReader(QMainWindow):
             new_w = max(1, round(orig_w * factor))
             new_h = max(1, round(orig_h * factor))
 
-
         else:  # fit_page
 
             ratio = min(vw / orig_w, vh / orig_h)
             new_w = max(1, round(orig_w * ratio))
             new_h = max(1, round(orig_h * ratio))
-
-
 
             if new_h > vh:
                 avail_w = max(1, vw - v_scroll_w)
@@ -2619,13 +2821,10 @@ class ComicReader(QMainWindow):
                 new_w = max(1, round(orig_w * ratio3))
                 new_h = max(1, round(orig_h * ratio3))
 
-
         scaled = self.current_pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(scaled)
 
-
         self.image_label.resize(scaled.size())
-
 
         allow_x = False
         allow_y = False
@@ -2646,12 +2845,10 @@ class ComicReader(QMainWindow):
         self.image_label.allow_pan_x = allow_x
         self.image_label.allow_pan_y = allow_y
 
-
         if self.image_label.drag_enabled and (allow_x or allow_y):
             self.image_label.setCursor(QCursor(Qt.OpenHandCursor))
         else:
             self.image_label.setCursor(QCursor(Qt.ArrowCursor))
-
 
         self.position_overlays()
         self.show_overlays()
@@ -2673,7 +2870,6 @@ class ComicReader(QMainWindow):
         else:
             self.scale_mode = "fit_width"
         self.display_current_pixmap()
-
 
     def prev_page(self):
         if self.image_list:
@@ -2702,7 +2898,6 @@ class ComicReader(QMainWindow):
                 if virt:
                     result.append((zip_path, virt))
         return result
-
 
     def close_and_remove_current_virtual(self):
         try:
@@ -2752,7 +2947,8 @@ class ComicReader(QMainWindow):
         return out
 
     def prev_archive(self):
-        if not self.image_list or not (str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
+        if not self.image_list or not (
+                str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
             return
         current_data = self.image_list[self.current_index]
         before_last, _ = current_data.rsplit(":", 1)
@@ -2795,9 +2991,9 @@ class ComicReader(QMainWindow):
         else:
             self.extract_zip_to_tree(target_item, target_path)
 
-
     def next_archive(self):
-        if not self.image_list or not (str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
+        if not self.image_list or not (
+                str(self.image_list[0]).startswith("zip://") or str(self.image_list[0]).startswith("pdf://")):
             return
 
         current_data = self.image_list[self.current_index]
@@ -2841,7 +3037,6 @@ class ComicReader(QMainWindow):
         else:
             self.extract_zip_to_tree(target_item, target_path)
 
-
     def switch_to_archive(self, virtual_item):
         children = [virtual_item.child(i).data(0, Qt.UserRole) for i in range(virtual_item.childCount())]
         if children:
@@ -2850,14 +3045,13 @@ class ComicReader(QMainWindow):
             self.load_image(children[0])
             self.tree.setCurrentItem(virtual_item.child(0))
 
-
     def show_context_menu(self, position):
         menu = QMenu()
-        
+
         reload_act = QAction(UI['context_menu_refresh'], self)
         reload_act.triggered.connect(self.reload_directory)
         menu.addAction(reload_act)
-        
+
         sort_action = QAction(UI['context_menu_sort_by_date'], self)
         sort_action.setCheckable(True)
         sort_action.setChecked(self.sort_by_date)
@@ -2872,7 +3066,7 @@ class ComicReader(QMainWindow):
             menu.addSeparator()
             menu.addAction(prev_act)
             menu.addAction(next_act)
-        
+
         menu.addSeparator()
 
         toggle_list_act = QAction(UI['context_menu_show_hide_file_panel'], self)
@@ -2884,7 +3078,6 @@ class ComicReader(QMainWindow):
     def toggle_sort(self):
         self.sort_by_date = not self.sort_by_date
         self.load_directory()
-
 
     def copy_current_to_clipboard(self):
         if not self.current_pixmap or self.current_pixmap.isNull():
@@ -2904,6 +3097,17 @@ class ComicReader(QMainWindow):
             self.scale_combo.setCurrentIndex(1)
         elif mode == "fit_width":
             self.scale_combo.setCurrentIndex(2)
+
+        try:
+            cur = self.image_list[self.current_index] if (
+                        self.image_list and 0 <= self.current_index < len(self.image_list)) else None
+            cur_str = str(cur) if cur else ""
+            if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
+                self.clear_cache_and_rerender()
+                return
+        except Exception:
+            pass
+
         self.display_current_pixmap()
 
     def set_custom_zoom(self, percent: int):
@@ -2913,6 +3117,17 @@ class ComicReader(QMainWindow):
             return
         self.custom_zoom = max(1, percent)
         self.scale_mode = "custom"
+
+        try:
+            cur = self.image_list[self.current_index] if (
+                        self.image_list and 0 <= self.current_index < len(self.image_list)) else None
+            cur_str = str(cur) if cur else ""
+            if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
+                self.clear_cache_and_rerender()
+                return
+        except Exception:
+            pass
+
         self.display_current_pixmap()
 
     def reset_zoom(self):
@@ -2930,7 +3145,6 @@ class ComicReader(QMainWindow):
         self.scale_mode = "custom"
         self.display_current_pixmap()
 
-
     def position_overlays(self):
         if not hasattr(self, "_viewport"):
             return
@@ -2938,10 +3152,10 @@ class ComicReader(QMainWindow):
         vw = vp.width()
         vh = vp.height()
 
-
-        left_w = self.left_arrow._computed_width(vw) if hasattr(self.left_arrow, "_computed_width") else self.left_arrow.width()
-        right_w = self.right_arrow._computed_width(vw) if hasattr(self.right_arrow, "_computed_width") else self.right_arrow.width()
-
+        left_w = self.left_arrow._computed_width(vw) if hasattr(self.left_arrow,
+                                                                "_computed_width") else self.left_arrow.width()
+        right_w = self.right_arrow._computed_width(vw) if hasattr(self.right_arrow,
+                                                                  "_computed_width") else self.right_arrow.width()
 
         self.left_arrow.setGeometry(QRect(0, 0, left_w, vh))
         self.right_arrow.setGeometry(QRect(max(0, vw - right_w), 0, right_w, vh))
@@ -2955,11 +3169,9 @@ class ComicReader(QMainWindow):
         except Exception:
             pass
 
-
     def show_overlays(self):
         if self.current_pixmap is None:
             return
-
 
         self.left_arrow.show()
         self.right_arrow.show()
@@ -2967,18 +3179,18 @@ class ComicReader(QMainWindow):
     def hide_overlays(self):
         self.left_arrow.hide()
         self.right_arrow.hide()
-    
+
     def eventFilter(self, watched, event):
         if watched is getattr(self, "_viewport", None):
             if event.type() == QEvent.Resize:
                 self.position_overlays()
                 try:
-                    self._resize_timer.start(500)
+                    self._resize_timer.start(250)
                 except Exception:
                     pass
                 self.display_current_pixmap()
         return super().eventFilter(watched, event)
-    
+
     def _on_viewport_resized(self):
         try:
             vp = self._scroll_area.viewport()
@@ -2997,7 +3209,7 @@ class ComicReader(QMainWindow):
         except Exception:
             cur_str = ""
 
-        if cur_str.startswith("pdf://"):
+        if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
             try:
                 self.clear_cache_and_rerender()
             except Exception as e:

@@ -15,3 +15,5 @@ main nonono.py
 main yesyesyes.py
 tmp/
 result.json
+
+.idea/
