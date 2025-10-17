@@ -17,3 +17,5 @@ tmp/
 result.json
 
 .idea/
+processed_preview.png
+/clean_cache.bat

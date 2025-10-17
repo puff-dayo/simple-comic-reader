@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
 )
 
-APP_VERSION = "1.2"
+from cvhelp import resize_qimage_with_opencv
+
+APP_VERSION = "1.3-dev"
 
 
 def is_archive_ext(ext: str) -> bool:
@@ -105,6 +107,7 @@ def get_icon_for_file(path: Path):
 
     _icon_cache[ext] = icon
     return icon
+
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
@@ -856,6 +859,10 @@ class ImageLabel(QLabel):
             reset_act.triggered.connect(lambda: mw.set_scale_mode(f"{mw.scale_mode}"))
             menu.addAction(reset_act)
 
+            self.demoire_act = QAction("Demoire: ON" if mw.demoire else "Demoire: OFF", self)
+            self.demoire_act.triggered.connect(lambda: self._on_demoire_clicked(mw))
+            menu.addAction(self.demoire_act)
+
             clear_cache_act = QAction(UI['context_menu_refresh'], self)
             clear_cache_act.triggered.connect(lambda: mw.clear_cache_and_rerender())
             menu.addAction(clear_cache_act)
@@ -865,6 +872,10 @@ class ImageLabel(QLabel):
             menu.addAction(toggle_list_act)
 
         menu.exec(event.globalPos())
+
+    def _on_demoire_clicked(self, mw):
+        mw.trigger_demoire()
+        self.demoire_act.setText("Demoire: ON" if mw.demoire else "Demoire: OFF")
 
 
 class EdgeClickArea(QWidget):
@@ -1056,7 +1067,6 @@ class _ImageRenderTask(QRunnable):
                 self.sig.finished.emit(self.zip_path_str, self.inner_name, QImage())
             except Exception:
                 pass
-
 
 
 class _ImageRenderSignal(QObject):
@@ -1567,7 +1577,7 @@ class ComicReader(QMainWindow):
         super().__init__()
         self.setWindowTitle(UI["app_window_title"])
         self.setWindowIcon(QIcon('icon-512.png'))
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(100, 40, 1650, 1010)
 
         self.config = {"general": dict(DEFAULT_CONFIG["general"]), "shortcuts": dict(DEFAULT_CONFIG["shortcuts"])}
         self.current_dir = Path()
@@ -1593,6 +1603,7 @@ class ComicReader(QMainWindow):
         self._image_render_pool.setMaxThreadCount(4)
         self._image_render_signal = _ImageRenderSignal()
         self._image_render_signal.finished.connect(self._on_image_render_finished)
+        self.demoire = False
 
         self.virtual_items = {}
 
@@ -1722,10 +1733,10 @@ class ComicReader(QMainWindow):
         self._debug_zip_cache = False
 
     def _dbg(self, *args):
-        # try:
-        #     if getattr(self, "_debug_zip_cache", False):
-        #         print("[ComicReader DEBUG]", *args)
-        # except Exception:
+        try:
+            if getattr(self, "_debug_zip_cache", False):
+                print("[ComicReader DEBUG]", *args)
+        except Exception:
             pass
 
     def setup_shortcuts(self):
@@ -2152,10 +2163,10 @@ class ComicReader(QMainWindow):
                 pass
             self._loading_dir = False
 
-    def sort_key(self, path: Path):
-        if self.sort_by_date:
-            return path.stat().st_mtime
-        return path.name.lower()
+    # def sort_key(self, path: Path):
+    #     if self.sort_by_date:
+    #         return path.stat().st_mtime
+    #     return path.name.lower()
 
     def sort_key(self, path_or_entry):
         try:
@@ -2862,6 +2873,29 @@ class ComicReader(QMainWindow):
 
         return None
 
+    def trigger_demoire(self):
+        self.demoire = not self.demoire
+
+        try:
+            if not self.image_list or self.current_index < 0 or self.current_index >= len(self.image_list):
+                QMessageBox.information(self, "Info", "No image loaded.")
+                return
+
+            cur_item = self.image_list[self.current_index]
+            if not cur_item.startswith("zip://"):
+                QMessageBox.information(self, "Info", "Demoire only works for ZIP images.")
+                return
+
+            if hasattr(self, "_zip_img_cache"):
+                self._zip_img_cache.clear()
+            if hasattr(self, "_pdf_pixmap_cache"):
+                self._pdf_pixmap_cache.clear()
+
+            self.load_image(cur_item)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Demoire Error", str(e))
+
     def request_zip_image_render(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int):
         try:
             viewport = self._scroll_area.viewport()
@@ -2878,7 +2912,8 @@ class ComicReader(QMainWindow):
         tw_px, th_px = self._to_physical_size(int(target_w), int(target_h), dpr)
         key = (zip_path_str, inner_name, int(tw_px), int(th_px))
 
-        self._dbg("request_zip_image_render target logical:", target_w, target_h, "dpr:", dpr, "=> phys:", tw_px, th_px, "key:", key)
+        self._dbg("request_zip_image_render target logical:", target_w, target_h, "dpr:", dpr, "=> phys:", tw_px, th_px,
+                  "key:", key)
 
         cached = self._zip_cache_get(key)
         if cached:
@@ -2904,6 +2939,15 @@ class ComicReader(QMainWindow):
         self._image_render_pool.start(task)
         return None
 
+    def _do_fit_scale(self, tw, th, qimage: QImage, mode: str):
+        if mode == "fit_width":
+            scaled = qimage.scaledToWidth(int(tw), Qt.SmoothTransformation)
+        elif mode == "fit_height":
+            scaled = qimage.scaledToHeight(int(th), Qt.SmoothTransformation)
+        else:
+            scaled = qimage.scaled(int(tw), int(th), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        return scaled
 
     def _on_image_render_finished(self, zip_path_str: str, inner_name: str, qimage: QImage):
         try:
@@ -2960,17 +3004,17 @@ class ComicReader(QMainWindow):
             for (tw, th, mode) in pending:
                 try:
                     if phys_w >= 1 and phys_h >= 1:
-                        if mode == "fit_width":
-                            scaled = qimage.scaledToWidth(int(tw), Qt.SmoothTransformation)
-                        elif mode == "fit_height":
-                            scaled = qimage.scaledToHeight(int(th), Qt.SmoothTransformation)
+                        if self.demoire:
+                            scaled = resize_qimage_with_opencv(qimage, int(tw), int(th), mode=mode,
+                                                               use_comic_rescale=True)
                         else:
-                            scaled = qimage.scaled(int(tw), int(th), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                            scaled = self._do_fit_scale(tw, th.th, qimage, mode)
 
                         scaled_key = (zip_path_str, inner_name, int(scaled.width()), int(scaled.height()))
                         try:
                             self._zip_cache_put(scaled_key, scaled)
-                            self._dbg("generated scaled cache for", scaled_key, "from orig", (phys_w, phys_h), "mode:", mode)
+                            self._dbg("generated scaled cache for", scaled_key, "from orig", (phys_w, phys_h), "mode:",
+                                      mode)
                         except Exception:
                             try:
                                 self._zip_img_cache[scaled_key] = scaled
@@ -3009,19 +3053,31 @@ class ComicReader(QMainWindow):
                     chosen_qimg = None
                     try:
                         mode = str(self.scale_mode)
-                        if mode == "fit_width":
-                            chosen_qimg = qimage.scaledToWidth(int(tw_px), Qt.SmoothTransformation)
-                        elif mode == "fit_height":
-                            chosen_qimg = qimage.scaledToHeight(int(th_px), Qt.SmoothTransformation)
+                        if self.demoire:
+                            chosen_qimg = resize_qimage_with_opencv(qimage, int(tw_px), int(th_px), mode=mode,
+                                                                    use_comic_rescale=True)
+                            print('2')
                         else:
-                            chosen_qimg = qimage.scaled(int(tw_px), int(th_px), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                            chosen_qimg = self._do_fit_scale(tw_px, th_px, qimage, mode)
 
                         try:
-                            self._zip_cache_put((zip_path_str, inner_name, int(chosen_qimg.width()), int(chosen_qimg.height())), chosen_qimg)
+                            self._zip_cache_put(
+                                (zip_path_str, inner_name, int(chosen_qimg.width()), int(chosen_qimg.height())),
+                                chosen_qimg)
                         except Exception:
                             pass
                     except Exception:
                         chosen_qimg = qimage
+
+                    try:
+                        self._dbg("DEBUG scale_mode:", mode,
+                                  "requested phys target (tw_px,th_px):", tw_px, th_px,
+                                  "orig qimage size:", qimage.width(), qimage.height(),
+                                  "chosen_qimg size:", chosen_qimg.width() if chosen_qimg else None,
+                                  chosen_qimg.height() if chosen_qimg else None,
+                                  "viewport dpr:", dpr)
+                    except Exception:
+                        pass
 
                     if chosen_qimg is not None:
                         try:
@@ -3165,7 +3221,6 @@ class ComicReader(QMainWindow):
         except Exception:
             pass
 
-
     def display_current_pixmap(self):
         if self.current_pixmap is None:
             # self.image_label.setPixmap(QPixmap())
@@ -3255,7 +3310,14 @@ class ComicReader(QMainWindow):
                 new_h_px = max(1, int(round(orig_h * ratio3)))
 
         try:
-            scaled = pm.scaled(int(new_w_px), int(new_h_px), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            if self.demoire:
+                qimg = pm.toImage()
+                scaled_qimg = resize_qimage_with_opencv(qimg, int(new_w_px), int(new_h_px), mode="keep_aspect",
+                                                        use_comic_rescale=True)
+                scaled = QPixmap.fromImage(scaled_qimg)
+                print('3')
+            else:
+                scaled = pm.scaled(int(new_w_px), int(new_h_px), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         except Exception:
             scaled = pm
 
@@ -3310,7 +3372,6 @@ class ComicReader(QMainWindow):
             vbar.setValue(vbar.minimum())
         elif self.scale_mode == "fit_height":
             hbar.setValue(hbar.minimum())
-
 
     def on_scale_mode_changed(self, index):
         if index == 0:
@@ -3598,7 +3659,6 @@ class ComicReader(QMainWindow):
         except Exception:
             pass
 
-
     def set_custom_zoom(self, percent: int):
         try:
             percent = int(percent)
@@ -3609,7 +3669,7 @@ class ComicReader(QMainWindow):
 
         try:
             cur = self.image_list[self.current_index] if (
-                        self.image_list and 0 <= self.current_index < len(self.image_list)) else None
+                    self.image_list and 0 <= self.current_index < len(self.image_list)) else None
             cur_str = str(cur) if cur else ""
             if cur_str.startswith("pdf://") or cur_str.startswith("zip://"):
                 self.clear_cache_and_rerender()
@@ -3687,9 +3747,9 @@ class ComicReader(QMainWindow):
         except Exception:
             return
 
-        if (vw, vh) == getattr(self, "_last_viewport_size", (0,0)):
+        if (vw, vh) == getattr(self, "_last_viewport_size", (0, 0)):
             return
-        lw, lh = getattr(self, "_last_viewport_size", (0,0))
+        lw, lh = getattr(self, "_last_viewport_size", (0, 0))
         if abs(vw - lw) <= 2 and abs(vh - lh) <= 2:
             return
 
@@ -3707,7 +3767,6 @@ class ComicReader(QMainWindow):
             except Exception:
                 pass
 
-
     def closeEvent(self, event):
         try:
             if self.current_zip_obj is not None:
@@ -3722,5 +3781,5 @@ class ComicReader(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ComicReader()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec())

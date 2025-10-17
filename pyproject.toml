@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "nuitka>=2.8.1",
+    "numpy>=2.3.4",
+    "opencv-python>=4.11.0.86",
     "pillow>=11.3.0",
     "pymupdf==1.23.5",
     "pyside6>=6.10.0",
