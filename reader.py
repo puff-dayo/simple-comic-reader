@@ -3,11 +3,13 @@ import configparser
 import os
 import re
 import sys
-import zipfile
+import traceback
+
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
 import fitz
+import pyzipper
 from PySide6.QtCore import (
     Qt, QPoint, QRect, QSize, QEvent, QLocale, QFileInfo, Signal, QObject, QRunnable, QThreadPool, QTimer
 )
@@ -20,10 +22,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
 )
+from pyzipper import AESZipFile, ZipFile, zipfile
 
 from cvhelp import resize_qimage_with_opencv
 
-APP_VERSION = "1.3-dev"
+APP_VERSION = "1.3.2-dev"
 
 
 def is_archive_ext(ext: str) -> bool:
@@ -108,6 +111,54 @@ def get_icon_for_file(path: Path):
     _icon_cache[ext] = icon
     return icon
 
+
+def find_zip_password(zip_path, password_file='./pswd.txt'):
+    zip_path_str = str(zip_path)
+
+    try:
+        with ZipFile(zip_path_str, 'r') as zf:
+            infolist = zf.infolist()
+            is_encrypted = any(zi.flag_bits & 1 for zi in infolist)
+            is_aes = any(zi.compress_type == 99 for zi in infolist)
+            if not is_encrypted:
+                return None  # Not encrypted
+            print(f"Encryption detected: {'AES' if is_aes else 'Traditional (ZipCrypto)'}")
+    except zipfile.BadZipFile:
+        raise ValueError(f"Invalid ZIP: {zip_path}")
+
+    passwords = []
+    try:
+        with open(password_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                pwd = line.strip()
+                if pwd:
+                    passwords.append(pwd)
+    except FileNotFoundError:
+        print(f"Password file '{password_file}' not found.")
+        return None
+    except Exception as e:
+        print(f"Error reading passwords: {e}")
+        return None
+
+    if not passwords:
+        print("No passwords to try.")
+        return None
+
+    ZipClass = AESZipFile
+
+    for pwd in passwords:
+        try:
+            with ZipClass(zip_path_str, 'r') as zf:
+                zf.setpassword(pwd.encode('utf-8'))
+                bad_file = zf.testzip()
+                if bad_file is None:
+                    return pwd
+        except Exception as e:
+            print(f"Unexpected error with: {e}")
+            continue
+
+    print(f"No matching password for")
+    return None
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
@@ -1030,19 +1081,26 @@ class _PdfRenderTask(QRunnable):
 
 
 class _ImageRenderTask(QRunnable):
-    def __init__(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int, sig):
+    def __init__(self, zip_path_str: str, inner_name: str, target_w: int, target_h: int, sig, password: str = None):
         super().__init__()
         self.zip_path_str = zip_path_str
         self.inner_name = inner_name
         self.target_w = int(target_w)
         self.target_h = int(target_h)
         self.sig = sig
+        self.password = password
 
     def run(self):
         try:
-            with zipfile.ZipFile(self.zip_path_str, 'r') as zf:
-                with zf.open(self.inner_name) as f:
-                    data = f.read()
+            try:
+                with pyzipper.AESZipFile(self.zip_path_str, 'r') as zf:
+                    if self.password:
+                        zf.setpassword(self.password.encode('utf-8'))
+                    with zf.open(self.inner_name) as f:
+                        data = f.read()
+            except Exception:
+                raise
+
             qimg = QImage.fromData(data)
             if qimg is None or qimg.isNull():
                 try:
@@ -1097,6 +1155,17 @@ class ThumbnailSignals(QObject):
     error = Signal(str)
 
 
+def _to_bytes_pwd(pwd):
+    if pwd is None:
+        return None
+    if isinstance(pwd, bytes):
+        return pwd
+    try:
+        return str(pwd).encode('utf-8')
+    except Exception:
+        return None
+
+
 class ThumbnailLoadTask(QRunnable):
     def __init__(self, dir_path: Path, thumb_w: int, thumb_h: int, signals: ThumbnailSignals, cancel_cb=None):
         super().__init__()
@@ -1143,26 +1212,69 @@ class ThumbnailLoadTask(QRunnable):
                 caption = p.name
 
                 if ext in {'.zip', '.cbz'}:
+                    p_str = str(p)
+                    caption = p.name
+
+                    pwd = None
+                    names = []
+
+                    if True:
+                        try:
+                            found = find_zip_password(p_str)
+                            if found:
+                                pwd_bytes = _to_bytes_pwd(found)
+                        except Exception as e:
+                            print(f"find_zip_password error for {p_str}: {e}\n{traceback.format_exc()}")
+
+                        try:
+                            with pyzipper.AESZipFile(p_str, 'r') as zf:
+                                if pwd_bytes:
+                                    try:
+                                        zf.setpassword(pwd_bytes)
+                                    except Exception as e:
+                                        zf.setpassword(pwd_bytes.decode('utf-8'))
+
+                                try:
+                                    names = [n for n in zf.namelist()
+                                             if os.path.basename(n) and os.path.basename(n).lower().endswith(
+                                            ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))]
+                                except Exception as e:
+                                    names = []
+                        except Exception as e:
+                            names = []
+
+                    if not names:
+                        continue
+
+                    names.sort(key=natural_sort_key)
+                    first = names[0]
+
+                    data = None
                     try:
-                        with zipfile.ZipFile(str(p), 'r') as zf:
-                            names = [n for n in zf.namelist() if
-                                     os.path.basename(n) and os.path.basename(n).lower().endswith(
-                                         ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))]
-                            if not names:
-                                continue
-                            names.sort(key=natural_sort_key)
-                            first = names[0]
+                        with pyzipper.AESZipFile(p_str, 'r') as zf:
+                            if pwd_bytes:
+                                try:
+                                    zf.setpassword(pwd_bytes)
+                                except Exception:
+                                    try:
+                                        zf.setpassword(pwd_bytes.decode('utf-8'))
+                                    except Exception:
+                                        pass
                             with zf.open(first) as f:
                                 data = f.read()
-                            thumb_key = f"zip://{str(p.resolve())}:{first}"
-                            payload = {'key': thumb_key, 'data': data, 'caption': caption}
-                            results.append(payload)
-                            try:
-                                self.signals.thumb_ready.emit(payload)
-                            except Exception:
-                                pass
-                    except Exception:
+                    except Exception as e:
+                        data = None
+
+                    if not data:
                         continue
+
+                    thumb_key = f"zip://{str(p.resolve())}:{first}"
+                    payload = {'key': thumb_key, 'data': data, 'caption': caption}
+                    results.append(payload)
+                    try:
+                        self.signals.thumb_ready.emit(payload)
+                    except Exception:
+                        pass
 
                 elif ext == '.pdf':
                     try:
@@ -1787,6 +1899,12 @@ class ComicReader(QMainWindow):
 
         add_shortcut("F11", self.toggle_fullscreen)
 
+        add_shortcut(Qt.Key_1 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_page"))
+        add_shortcut(Qt.Key_2 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_width"))
+        add_shortcut(Qt.Key_3 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_height"))
+        add_shortcut(Qt.Key_5 | Qt.KeypadModifier, self.close_all_archives)
+
+
     def toggle_fullscreen(self):
         if self.isFullScreen():
 
@@ -2377,17 +2495,21 @@ class ComicReader(QMainWindow):
                 virt = self.virtual_items[zip_path_str]
                 self.tree.setCurrentItem(virt)
 
-                if self.current_zip_obj is None or self.current_zip_path != zip_path_str:
-                    if self.current_zip_obj is not None:
-                        try:
-                            self.current_zip_obj.close()
-                        except Exception:
-                            pass
-                        self.current_zip_obj = None
-                        self.current_zip_path = None
+                stored_data = virt.data(0, Qt.UserRole)
+                pwd = stored_data[1] if isinstance(stored_data, tuple) and len(stored_data) > 1 else None
+                pwd_bytes = pwd.encode("utf-8") if pwd else None
 
-                    self.current_zip_obj = zipfile.ZipFile(zip_path_str, 'r')
-                    self.current_zip_path = zip_path_str
+                if self.current_zip_obj is not None:
+                    try:
+                        self.current_zip_obj.close()
+                    except Exception:
+                        pass
+                    self.current_zip_obj = None
+
+                self.current_zip_obj = pyzipper.AESZipFile(zip_path_str, "r")
+                if pwd_bytes:
+                    self.current_zip_obj.setpassword(pwd_bytes)
+                self.current_zip_path = zip_path_str
 
                 zip_files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
                 self.image_list = zip_files
@@ -2397,18 +2519,16 @@ class ComicReader(QMainWindow):
                     self.tree.setCurrentItem(virt.child(0))
                 return
 
-            if self.current_zip_obj is not None and self.current_zip_path != zip_path_str:
-                try:
-                    self.current_zip_obj.close()
-                except Exception:
-                    pass
-                self.current_zip_obj = None
-                self.current_zip_path = None
+            pwd = find_zip_password(zip_path)
+            pwd_bytes = pwd.encode("utf-8") if pwd else None
 
-            zf = zipfile.ZipFile(zip_path_str, 'r')
+            zf = pyzipper.AESZipFile(zip_path_str, "r")
+            if pwd_bytes:
+                zf.setpassword(pwd_bytes)
 
             virtual_item = QTreeWidgetItem([f"{UI['tree_expand_zip_prefix']}{zip_path.name}"])
-            virtual_item.setData(0, Qt.UserRole, zip_path_str)
+            # (path, password)
+            virtual_item.setData(0, Qt.UserRole, (zip_path_str, pwd))
             virtual_item.setIcon(0, self.style().standardIcon(QStyle.SP_DirOpenIcon))
 
             zip_files = []
@@ -2416,7 +2536,7 @@ class ComicReader(QMainWindow):
                 base = os.path.basename(name)
                 if not base:
                     continue
-                if base.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
+                if base.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
                     sub_item = QTreeWidgetItem([base])
                     sub_item.setData(0, Qt.UserRole, f"zip://{zip_path_str}:{name}")
                     virtual_item.addChild(sub_item)
@@ -2435,15 +2555,15 @@ class ComicReader(QMainWindow):
 
             self.current_zip_obj = zf
             self.current_zip_path = zip_path_str
-
             self.image_list = zip_files
             self.current_index = 0
+
             if zip_files:
                 self.load_image(zip_files[0])
                 self.tree.setCurrentItem(virtual_item.child(0))
 
         except Exception as e:
-            QMessageBox.warning(self, UI["app_window_title"], UI['dialogs_warning_zip_failed'].format(error=str(e)))
+            print(f"Error processing ZIP {zip_path}: {e}")
 
     def pre_render_adjacent_pages(self, pdf_path: str, page_num: int):
         try:
@@ -2935,7 +3055,17 @@ class ComicReader(QMainWindow):
 
         self._dbg("cache MISS for", key, "-> registered pending:", self._zip_pending_requests.get(pk))
 
-        task = _ImageRenderTask(zip_path_str, inner_name, int(tw_px), int(th_px), self._image_render_signal)
+        pwd = None
+        try:
+            virt = self.virtual_items.get(str(Path(zip_path_str).resolve()))
+            if virt:
+                stored = virt.data(0, Qt.UserRole)
+                if isinstance(stored, tuple) and len(stored) > 1:
+                    pwd = stored[1]
+        except Exception:
+            pwd = None
+
+        task = _ImageRenderTask(zip_path_str, inner_name, int(tw_px), int(th_px), self._image_render_signal, password=pwd)
         self._image_render_pool.start(task)
         return None
 

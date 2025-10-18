@@ -12,6 +12,8 @@ set "NUITKA_CFLAGS=-O3 -march=native -fno-exceptions -fomit-frame-pointer"
 set "NUITKA_LDFLAGS=-s"  rem strip symbols from final link (gcc option)
 set "NUITKA_LTO=yes"
 
+set "NUITKA_CACHE_DIR=%CD%\cache"
+
 @REM set "INCLUDE_DIRS="
 set "INCLUDE_FILES=icon-512.png"
 
