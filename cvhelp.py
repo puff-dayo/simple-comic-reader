@@ -3,7 +3,7 @@ import numpy as np
 from PySide6.QtGui import QImage
 import traceback
 
-from lib_cr import rescale_qimage_comic
+from lib_cr_p import rescale_qimage_comic
 
 
 def _dbg_print(*args, **kwargs):
@@ -78,66 +78,6 @@ def numpy_to_qimage_rgb_or_rgba(arr: np.ndarray) -> QImage:
             return QImage(bgra.data, w, h, 4 * w, QImage.Format_ARGB32).copy()
     else:
         raise ValueError(f"Unsupported array shape for conversion to QImage: {arr.shape}")
-
-def resize_qimage_with_opencv_v0(qimage: QImage, target_w:int, target_h:int, mode:str="keep_aspect") -> QImage:
-    try:
-        src_w = int(qimage.width())
-        src_h = int(qimage.height())
-        _dbg_print("ENTER resize: src:", src_w, src_h, "requested target:", target_w, target_h, "mode:", mode)
-
-        if src_w <= 0 or src_h <= 0:
-            _dbg_print("Invalid source size")
-            return qimage
-
-        if mode == "fit_width":
-            new_w = max(1, int(target_w))
-            new_h = max(1, int(round(src_h * (new_w / src_w))))
-        elif mode == "fit_height":
-            new_h = max(1, int(target_h))
-            new_w = max(1, int(round(src_w * (new_h / src_h))))
-        else:
-            scale_w = float(target_w) / float(src_w)
-            scale_h = float(target_h) / float(src_h)
-            scale = min(scale_w, scale_h) if (scale_w > 0 and scale_h > 0) else max(scale_w, scale_h)
-            if scale <= 0:
-                scale = 1.0
-            new_w = max(1, int(round(src_w * scale)))
-            new_h = max(1, int(round(src_h * scale)))
-
-        _dbg_print("Computed new size:", new_w, new_h)
-
-        if new_w == src_w and new_h == src_h:
-            _dbg_print("No-op resize (target equals source)")
-            return qimage
-
-        arr_rgba = qimage_to_numpy_rgba(qimage)
-        _dbg_print("Converted to numpy arr shape:", arr_rgba.shape)
-
-        cv_src = cv2.cvtColor(arr_rgba, cv2.COLOR_RGBA2BGRA)
-
-        interp = cv2.INTER_AREA if (new_w < src_w or new_h < src_h) else cv2.INTER_LANCZOS4
-        _dbg_print("Using interpolation:", "INTER_AREA" if interp==cv2.INTER_AREA else "LANCZOS4")
-
-        cv_dst = cv2.resize(cv_src, (new_w, new_h), interpolation=interp)
-        _dbg_print("cv2.resize done, result shape:", cv_dst.shape)
-
-        rgba = cv2.cvtColor(cv_dst, cv2.COLOR_BGRA2RGBA)
-
-        # If alpha fully opaque, return RGB to save memory
-        if np.all(rgba[:,:,3] == 255):
-            rgb = rgba[:,:,:3].copy()
-            qout = numpy_to_qimage_rgb_or_rgba(rgb)
-            _dbg_print("Alpha all 255 -> returned RGB QImage size:", qout.width(), qout.height())
-            return qout
-        else:
-            qout = numpy_to_qimage_rgb_or_rgba(rgba)
-            _dbg_print("Returned RGBA QImage size:", qout.width(), qout.height())
-            return qout
-
-    except Exception as e:
-        _dbg_print("Exception in resize_qimage_with_opencv:", e)
-        _dbg_print(traceback.format_exc())
-        return qimage
 
 def resize_qimage_with_opencv(qimage: QImage, target_w: int, target_h: int, mode: str = "keep_aspect",
                                use_comic_rescale: bool = False) -> QImage:
