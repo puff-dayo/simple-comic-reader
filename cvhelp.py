@@ -3,7 +3,7 @@ import numpy as np
 from PySide6.QtGui import QImage
 import traceback
 
-from lib_cr_p import rescale_qimage_comic
+from lib_cr import rescale_qimage_comic, _compute_new_size
 
 
 def _dbg_print(*args, **kwargs):
@@ -80,7 +80,7 @@ def numpy_to_qimage_rgb_or_rgba(arr: np.ndarray) -> QImage:
         raise ValueError(f"Unsupported array shape for conversion to QImage: {arr.shape}")
 
 def resize_qimage_with_opencv(qimage: QImage, target_w: int, target_h: int, mode: str = "keep_aspect",
-                               use_comic_rescale: bool = False) -> QImage:
+                              use_comic_rescale: bool = False, *, std_k: int = 11, std_mult: float = 0.7) -> QImage:
     try:
         src_w = int(qimage.width())
         src_h = int(qimage.height())
@@ -90,54 +90,29 @@ def resize_qimage_with_opencv(qimage: QImage, target_w: int, target_h: int, mode
             _dbg_print("Invalid source size")
             return qimage
 
-        if use_comic_rescale:
-            _dbg_print("Using comic rescale algorithm")
-            result = rescale_qimage_comic(
-                qimage,
-                target_w,
-                target_h,
-                mode=mode,
-                std_k=11,      # TODO: larger for smooth
-                std_mult=0.7   # TODO: smaller for lines
-            )
-            _dbg_print("Comic rescale done, result size:", result.width(), result.height())
-            return result
-
-        if mode == "fit_width":
-            new_w = max(1, int(target_w))
-            new_h = max(1, int(round(src_h * (new_w / src_w))))
-        elif mode == "fit_height":
-            new_h = max(1, int(target_h))
-            new_w = max(1, int(round(src_w * (new_h / src_h))))
-        else:
-            scale_w = float(target_w) / float(src_w)
-            scale_h = float(target_h) / float(src_h)
-            scale = min(scale_w, scale_h) if (scale_w > 0 and scale_h > 0) else max(scale_w, scale_h)
-            if scale <= 0:
-                scale = 1.0
-            new_w = max(1, int(round(src_w * scale)))
-            new_h = max(1, int(round(src_h * scale)))
-
+        new_w, new_h = _compute_new_size(src_w, src_h, target_w, target_h, mode)
         _dbg_print("Computed new size:", new_w, new_h)
 
         if new_w == src_w and new_h == src_h:
             _dbg_print("No-op resize (target equals source)")
             return qimage
 
+        if use_comic_rescale:
+            _dbg_print("Delegating to rescale_qimage_comic")
+            result = rescale_qimage_comic(qimage, target_w, target_h, mode=mode, std_k=std_k, std_mult=std_mult)
+            _dbg_print("Comic rescale done, result size:", result.width(), result.height())
+            return result
+
         arr_rgba = qimage_to_numpy_rgba(qimage)
         _dbg_print("Converted to numpy arr shape:", arr_rgba.shape)
 
         cv_src = cv2.cvtColor(arr_rgba, cv2.COLOR_RGBA2BGRA)
-
         interp = cv2.INTER_AREA if (new_w < src_w or new_h < src_h) else cv2.INTER_LANCZOS4
         _dbg_print("Using interpolation:", "INTER_AREA" if interp == cv2.INTER_AREA else "LANCZOS4")
-
         cv_dst = cv2.resize(cv_src, (new_w, new_h), interpolation=interp)
         _dbg_print("cv2.resize done, result shape:", cv_dst.shape)
-
         rgba = cv2.cvtColor(cv_dst, cv2.COLOR_BGRA2RGBA)
 
-        # If alpha fully opaque, return RGB to save memory
         if np.all(rgba[:, :, 3] == 255):
             rgb = rgba[:, :, :3].copy()
             qout = numpy_to_qimage_rgb_or_rgba(rgb)
@@ -152,4 +127,3 @@ def resize_qimage_with_opencv(qimage: QImage, target_w: int, target_h: int, mode
         _dbg_print("Exception in resize_qimage_with_opencv:", e)
         _dbg_print(traceback.format_exc())
         return qimage
-
