@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
 )
+from charset_normalizer import from_bytes
 from pyzipper import AESZipFile, ZipFile, zipfile
 
 from cvhelp import resize_qimage_with_opencv
@@ -65,14 +66,27 @@ def is_pdf_protocol(s: str) -> bool:
 _num_re = re.compile(r'(\d+)')
 
 
-def natural_sort_key(s):
-    if isinstance(s, (Path, QFileInfo)):
+def natural_sort_key(s, ignore_ext=False):
+    if isinstance(s, Path):
+        name = s.name
+    elif hasattr(s, "fileName") and callable(getattr(s, "fileName")):
         try:
-            s = str(s)
+            name = s.fileName()
         except Exception:
-            s = s.name if hasattr(s, "name") else str(s)
-    s = str(s)
-    parts = _num_re.split(s)
+            name = str(s)
+    elif hasattr(s, "name"):
+        try:
+            name = s.name
+        except Exception:
+            name = str(s)
+    else:
+        name = str(s)
+
+    if ignore_ext:
+        if "." in name:
+            name = name.rsplit(".", 1)[0]
+
+    parts = _num_re.split(name)
     key = []
     for p in parts:
         if p.isdigit():
@@ -2401,9 +2415,9 @@ class ComicReader(QMainWindow):
 
     def sort_key(self, path_or_entry):
         try:
-            if self.sort_by_date:
+            if getattr(self, "sort_by_date", False):
                 try:
-                    if hasattr(path_or_entry, "stat") and hasattr(path_or_entry, "path") is False:
+                    if hasattr(path_or_entry, "stat") and not hasattr(path_or_entry, "path"):
                         return path_or_entry.stat().st_mtime
                 except Exception:
                     pass
@@ -2430,13 +2444,16 @@ class ComicReader(QMainWindow):
                         name = None
                 if not name:
                     try:
-                        name = Path(path_or_entry).name
+                        if hasattr(path_or_entry, "fileName") and callable(getattr(path_or_entry, "fileName")):
+                            name = path_or_entry.fileName()
+                        else:
+                            name = Path(path_or_entry).name
                     except Exception:
                         name = str(path_or_entry)
-                return natural_sort_key(name)
+                return natural_sort_key(name, ignore_ext=True)
 
         except Exception:
-            return natural_sort_key(str(path_or_entry))
+            return natural_sort_key(str(path_or_entry), ignore_ext=True)
 
     def on_item_clicked(self, item, column):
         if getattr(self, "_loading_dir", False):
@@ -2624,14 +2641,28 @@ class ComicReader(QMainWindow):
                     self.current_zip_obj.setpassword(pwd_bytes)
                 self.current_zip_path = zip_path_str
 
-                zip_files = [virt.child(i).data(0, Qt.UserRole) for i in range(virt.childCount())]
-                self.image_list = zip_files
+                pairs = []
+                for i in range(virt.childCount()):
+                    child = virt.child(i)
+                    display = child.text(0)
+                    uri = child.data(0, Qt.UserRole)
+                    pairs.append((display, uri))
+
+                pairs.sort(key=lambda t: natural_sort_key(t[0], ignore_ext=True))
+
+                zip_files_sorted = [uri for _, uri in pairs]
+                self.image_list = zip_files_sorted
                 self.current_index = 0
-                if zip_files:
-                    self.load_image(zip_files[0])
-                    self.tree.setCurrentItem(virt.child(0))
+                if zip_files_sorted:
+                    self.load_image(zip_files_sorted[0])
+                    first_uri = zip_files_sorted[0]
+                    for i in range(virt.childCount()):
+                        if virt.child(i).data(0, Qt.UserRole) == first_uri:
+                            self.tree.setCurrentItem(virt.child(i))
+                            break
                 return
 
+            # new vitem
             pwd = find_zip_password(zip_path)
             pwd_bytes = pwd.encode("utf-8") if pwd else None
 
@@ -2640,21 +2671,74 @@ class ComicReader(QMainWindow):
                 zf.setpassword(pwd_bytes)
 
             virtual_item = QTreeWidgetItem([f"{UI['tree_expand_zip_prefix']}{zip_path.name}"])
-            # (path, password)
             virtual_item.setData(0, Qt.UserRole, (zip_path_str, pwd))
             virtual_item.setIcon(0, self.style().standardIcon(QStyle.SP_DirOpenIcon))
 
-            zip_files = []
-            for name in zf.namelist():
-                base = os.path.basename(name)
-                if not base:
+            infos = []
+            all_bytes = bytearray()
+            for info in zf.infolist():
+                if info.is_dir():
                     continue
-                if base.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
-                    sub_item = QTreeWidgetItem([base])
-                    sub_item.setData(0, Qt.UserRole, f"zip://{zip_path_str}:{name}")
-                    virtual_item.addChild(sub_item)
-                    zip_files.append(f"zip://{zip_path_str}:{name}")
+                try:
+                    raw = info.filename.encode("cp437", errors="surrogateescape")
+                except Exception:
+                    raw = info.filename.encode("utf-8", errors="surrogateescape")
+                infos.append((info, raw))
+                all_bytes.extend(raw + b"\n")
 
+            zip_files = []
+            if infos:
+                utf8_count = sum(bool(getattr(i, "flag_bits", 0) & 0x800) for i, _ in infos)
+                if utf8_count == len(infos):
+                    detected_enc = "utf-8"
+                else:
+                    try:
+                        best = from_bytes(bytes(all_bytes)).best()
+                        detected_enc = best.encoding if best and best.encoding else None
+                    except Exception:
+                        detected_enc = None
+
+                    if not detected_enc:
+                        for fallback in ("utf-8", "latin-1", "cp1252"):
+                            try:
+                                bytes(all_bytes).decode(fallback)
+                                detected_enc = fallback
+                                break
+                            except Exception:
+                                continue
+                        else:
+                            detected_enc = "utf-8"
+
+                entries = []
+                for info, raw in infos:
+                    internal_name = info.filename
+                    if getattr(info, "flag_bits", 0) & 0x800:
+                        display_name = internal_name
+                    else:
+                        try:
+                            display_name = raw.decode(detected_enc, errors="replace")
+                        except Exception:
+                            display_name = internal_name
+
+                    base = os.path.basename(display_name)
+                    if not base:
+                        continue
+
+                    lower = base.lower()
+                    if lower.endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
+                        entries.append((display_name, internal_name))
+
+                entries.sort(key=lambda t: natural_sort_key(t[0], ignore_ext=True))
+
+                for display_name, internal_name in entries:
+                    sub_item = QTreeWidgetItem([display_name])
+                    sub_item.setData(0, Qt.UserRole, f"zip://{zip_path_str}:{internal_name}")
+                    virtual_item.addChild(sub_item)
+                    zip_files.append(f"zip://{zip_path_str}:{internal_name}")
+
+                print(f"[ZIP DETECT] {zip_path.name} -> detected encoding: {detected_enc}")
+
+            # insert
             if parent_item.parent() is None:
                 index = self.tree.indexOfTopLevelItem(parent_item)
                 self.tree.insertTopLevelItem(index + 1, virtual_item)
@@ -2666,6 +2750,7 @@ class ComicReader(QMainWindow):
             self.virtual_items[zip_path_str] = virtual_item
             self.tree.expandItem(virtual_item)
 
+            # update
             self.current_zip_obj = zf
             self.current_zip_path = zip_path_str
             self.image_list = zip_files
