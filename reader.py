@@ -1,10 +1,10 @@
 import collections
 import configparser
+import math
 import os
 import re
 import sys
-import traceback
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
@@ -17,7 +17,7 @@ from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QAction, QCursor, QP
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTreeWidget, QTreeWidgetItem, QLabel,
     QVBoxLayout, QHBoxLayout, QWidget, QFileDialog, QMenu, QMessageBox,
-    QStyle, QSplitter, QPushButton, QComboBox, QScrollArea, QFileIconProvider
+    QStyle, QSplitter, QPushButton, QComboBox, QScrollArea, QFileIconProvider, QProgressBar
 )
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QColorDialog, QDialogButtonBox, QKeySequenceEdit, QLayout, QSizePolicy
@@ -26,7 +26,7 @@ from pyzipper import AESZipFile, ZipFile, zipfile
 
 from cvhelp import resize_qimage_with_opencv
 
-APP_VERSION = "1.3.2-dev"
+APP_VERSION = "0.3.2-alpha"
 
 
 def is_archive_ext(ext: str) -> bool:
@@ -159,6 +159,7 @@ def find_zip_password(zip_path, password_file='./pswd.txt'):
 
     print(f"No matching password for")
     return None
+
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
@@ -1184,6 +1185,7 @@ class ThumbnailLoadTask(QRunnable):
             return
 
         results = []
+
         try:
             entries = []
             for p in sorted(self.dir_path.iterdir(), key=lambda x: natural_sort_key(x.name)):
@@ -1202,55 +1204,62 @@ class ThumbnailLoadTask(QRunnable):
                 pass
             return
 
-        for p in entries:
-            if self.cancel_cb():
-                break
+        if not entries:
+            try:
+                self.signals.finished.emit(results)
+            except Exception:
+                pass
+            return
 
+        max_workers = min(8, (os.cpu_count() or 1) * 2)
+
+        batch_size = 32
+
+        def _worker_process_path(p: Path):
             try:
                 ext = p.suffix.lower()
-                key = str(p.resolve())
+                p_str = str(p)
                 caption = p.name
 
                 if ext in {'.zip', '.cbz'}:
-                    p_str = str(p)
-                    caption = p.name
-
-                    pwd = None
+                    pwd_bytes = None
                     names = []
-
-                    if True:
+                    try:
                         try:
                             found = find_zip_password(p_str)
                             if found:
                                 pwd_bytes = _to_bytes_pwd(found)
-                        except Exception as e:
-                            print(f"find_zip_password error for {p_str}: {e}\n{traceback.format_exc()}")
+                        except Exception:
+                            pwd_bytes = None
+
+                        import pyzipper
+                        with pyzipper.AESZipFile(p_str, 'r') as zf:
+                            if pwd_bytes:
+                                try:
+                                    zf.setpassword(pwd_bytes)
+                                except Exception:
+                                    try:
+                                        zf.setpassword(pwd_bytes.decode('utf-8'))
+                                    except Exception:
+                                        pass
+
+                            try:
+                                names = [n for n in zf.namelist()
+                                         if os.path.basename(n) and os.path.basename(n).lower().endswith(
+                                        ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))]
+                            except Exception:
+                                names = []
+
+                        if not names:
+                            return None
 
                         try:
-                            with pyzipper.AESZipFile(p_str, 'r') as zf:
-                                if pwd_bytes:
-                                    try:
-                                        zf.setpassword(pwd_bytes)
-                                    except Exception as e:
-                                        zf.setpassword(pwd_bytes.decode('utf-8'))
+                            names.sort(key=natural_sort_key)
+                        except Exception:
+                            names.sort()
 
-                                try:
-                                    names = [n for n in zf.namelist()
-                                             if os.path.basename(n) and os.path.basename(n).lower().endswith(
-                                            ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))]
-                                except Exception as e:
-                                    names = []
-                        except Exception as e:
-                            names = []
-
-                    if not names:
-                        continue
-
-                    names.sort(key=natural_sort_key)
-                    first = names[0]
-
-                    data = None
-                    try:
+                        first = names[0]
+                        data = None
                         with pyzipper.AESZipFile(p_str, 'r') as zf:
                             if pwd_bytes:
                                 try:
@@ -1262,26 +1271,26 @@ class ThumbnailLoadTask(QRunnable):
                                         pass
                             with zf.open(first) as f:
                                 data = f.read()
-                    except Exception as e:
-                        data = None
+                        if not data:
+                            return None
 
-                    if not data:
-                        continue
+                        thumb_key = f"zip://{str(p.resolve())}:{first}"
+                        return {'key': thumb_key, 'data': data, 'caption': caption}
 
-                    thumb_key = f"zip://{str(p.resolve())}:{first}"
-                    payload = {'key': thumb_key, 'data': data, 'caption': caption}
-                    results.append(payload)
-                    try:
-                        self.signals.thumb_ready.emit(payload)
                     except Exception:
-                        pass
+                        return None
 
-                elif ext == '.pdf':
+                # PDF
+                if ext == '.pdf':
                     try:
+                        import fitz  # PyMuPDF
                         doc = fitz.open(str(p))
                         if len(doc) <= 0:
-                            doc.close()
-                            continue
+                            try:
+                                doc.close()
+                            except Exception:
+                                pass
+                            return None
                         page = doc[0]
                         scale = max(0.05, min(1.0, self.thumb_w / page.rect.width))
                         mat = fitz.Matrix(scale, scale)
@@ -1290,37 +1299,69 @@ class ThumbnailLoadTask(QRunnable):
                             png_bytes = pixmap.tobytes(output="png")
                         except TypeError:
                             png_bytes = pixmap.tobytes("png")
-                        doc.close()
-                        thumb_key = f"pdf://{str(p.resolve())}:0"
-                        payload = {'key': thumb_key, 'data': png_bytes, 'caption': caption}
-                        results.append(payload)
                         try:
-                            self.signals.thumb_ready.emit(payload)
+                            doc.close()
                         except Exception:
                             pass
+                        thumb_key = f"pdf://{str(p.resolve())}:0"
+                        return {'key': thumb_key, 'data': png_bytes, 'caption': caption}
                     except Exception:
                         try:
                             doc.close()
                         except Exception:
                             pass
-                        continue
+                        return None
 
-                else:
+                if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
                     try:
                         with open(p, 'rb') as f:
                             data = f.read()
                         thumb_key = str(p)
-                        payload = {'key': thumb_key, 'data': data, 'caption': caption}
+                        return {'key': thumb_key, 'data': data, 'caption': caption}
+                    except Exception:
+                        return None
+
+                return None
+            except Exception:
+                return None
+
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                total = len(entries)
+                num_batches = math.ceil(total / batch_size)
+                for b in range(num_batches):
+                    if self.cancel_cb():
+                        break
+
+                    start = b * batch_size
+                    end = min(total, start + batch_size)
+                    batch = entries[start:end]
+                    futures = {ex.submit(_worker_process_path, p): p for p in batch}
+
+                    for fut in as_completed(futures):
+                        if self.cancel_cb():
+                            break
+                        payload = None
+                        try:
+                            payload = fut.result()
+                        except Exception:
+                            payload = None
+
+                        if not payload:
+                            continue
+
+                        # append to results and emit thumb_ready from this QRunnable thread
                         results.append(payload)
                         try:
                             self.signals.thumb_ready.emit(payload)
                         except Exception:
                             pass
-                    except Exception:
-                        continue
 
-            except Exception:
-                continue
+                    if self.cancel_cb():
+                        break
+
+        except Exception:
+            pass
 
         try:
             self.signals.finished.emit(results)
@@ -1336,7 +1377,7 @@ class ThumbnailDialog(QDialog):
         self.thumb_w, self.thumb_h = thumb_size
         self.spacing = spacing
         self.setModal(False)
-        self.resize(768, 600)
+        self.resize(1100, 900)
 
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
@@ -1347,6 +1388,36 @@ class ThumbnailDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.scroll)
+
+        status_widget = QWidget(self)
+        status_layout = QHBoxLayout(status_widget)
+        status_layout.setContentsMargins(6, 6, 6, 6)
+        status_layout.setSpacing(8)
+
+        self._status_label = QLabel("", self)
+        self._status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._progress = QProgressBar(self)
+        self._progress.setMinimum(0)
+        self._progress.setMaximum(0)  # by default busy
+        self._progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._progress.setFixedHeight(18)
+        self._progress.setVisible(False)
+
+        self._cancel_btn = QPushButton("Cancel", self)
+        self._cancel_btn.setVisible(False)
+        self._cancel_btn.clicked.connect(self._on_cancel_thumbs)
+
+        status_layout.addWidget(self._status_label, 1)
+        status_layout.addWidget(self._progress, 1)
+        status_layout.addWidget(self._cancel_btn, 0)
+        layout.addWidget(status_widget)
+
+        self.setLayout(layout)
+
+        # internal counters
+        self._thumbs_expected = None
+        self._thumbs_loaded = 0
+
         self.setLayout(layout)
 
         self._thumb_cache = {}  # key->QPixmap
@@ -1366,6 +1437,43 @@ class ThumbnailDialog(QDialog):
         self._thumb_cache.clear()
         self._items.clear()
 
+    def _start_loading_ui(self, expected_count: int | None = None):
+        self._thumbs_expected = expected_count
+        self._thumbs_loaded = 0
+        self._status_label.setText("Loading thumbnails...")
+        if expected_count is None:
+            self._progress.setRange(0, 0)  # busy/indeterminate
+        else:
+            self._progress.setRange(0, expected_count)
+            self._progress.setValue(0)
+        self._progress.setVisible(True)
+        self._cancel_btn.setVisible(True)
+        self._thumb_task_cancelled = False
+
+    def _update_loading_ui_on_thumb(self):
+        self._thumbs_loaded += 1
+        if self._thumbs_expected is None:
+            self._status_label.setText(f"Loaded {self._thumbs_loaded}…")
+        else:
+            self._progress.setValue(self._thumbs_loaded)
+            self._status_label.setText(f"Loading {self._thumbs_loaded} / {self._thumbs_expected}")
+
+    def _finish_loading_ui(self, results: list | None = None):
+        total = len(results) if isinstance(results, list) else self._thumbs_loaded
+        if total == 0:
+            self._status_label.setText("No images found.")
+        else:
+            self._status_label.setText(f"Loaded {total} thumbnails.")
+        self._progress.setVisible(False)
+        self._cancel_btn.setVisible(False)
+        self._thumb_task = None
+        self._thumb_task_cancelled = False
+
+    def _on_cancel_thumbs(self):
+        self._thumb_task_cancelled = True
+        self._status_label.setText("Cancelling...")
+        self._cancel_btn.setVisible(False)
+
     def _on_thumb_ready(self, payload: Dict[str, Any]):
         try:
             data = payload.get('data') if isinstance(payload, dict) else None
@@ -1378,11 +1486,13 @@ class ThumbnailDialog(QDialog):
             if not ok or pix.isNull():
                 return
             self.add_thumbnail_widget(key, pix, caption)
+            self._update_loading_ui_on_thumb()
         except Exception:
             pass
 
     def _on_thumbs_finished(self, results: List[Dict[str, Any]]):
         self._thumb_task = None
+        self._finish_loading_ui(results)
 
     def add_thumbnail_widget(self, key, pixmap: QPixmap, caption: str = ""):
         thumb = pixmap.scaled(self.thumb_w, self.thumb_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -1595,6 +1705,10 @@ class ThumbnailDialog(QDialog):
         signals.error.connect(lambda e: None)  # TODO: show error msg
 
         self._thumb_signals = signals
+
+        # TODO: expected = len(entries)
+        expected = -1
+        self._start_loading_ui(expected_count=expected if expected > 0 else None)
 
         def cancel_cb():
             return self._thumb_task_cancelled or (not self.isVisible())
@@ -1903,7 +2017,6 @@ class ComicReader(QMainWindow):
         add_shortcut(Qt.Key_2 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_width"))
         add_shortcut(Qt.Key_3 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_height"))
         add_shortcut(Qt.Key_5 | Qt.KeypadModifier, self.close_all_archives)
-
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -3065,7 +3178,8 @@ class ComicReader(QMainWindow):
         except Exception:
             pwd = None
 
-        task = _ImageRenderTask(zip_path_str, inner_name, int(tw_px), int(th_px), self._image_render_signal, password=pwd)
+        task = _ImageRenderTask(zip_path_str, inner_name, int(tw_px), int(th_px), self._image_render_signal,
+                                password=pwd)
         self._image_render_pool.start(task)
         return None
 
