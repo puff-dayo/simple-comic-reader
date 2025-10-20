@@ -24,6 +24,8 @@ Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fu
 - Automatic detection of archive filename encodings
 - Multi-language UI (English / 简体中文 / Русский)
 - Thumbnail view: quickly preview covers of all comic files in a folder
+- To open password-protected archives, create a `pswd.txt` file in the app directory (one password per line)
+
 
 ---
 
