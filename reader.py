@@ -28,6 +28,7 @@ from pyzipper import AESZipFile, ZipFile, zipfile
 from cvhelp import resize_qimage_with_opencv
 
 APP_VERSION = "0.3.2-alpha"
+MANUAL_LANG = "auto"
 
 
 def is_archive_ext(ext: str) -> bool:
@@ -181,7 +182,8 @@ DEFAULT_CONFIG = {
     "general": {
         "auto_open_dir": "",
         "background_color": "auto",
-        "default_fit_mode": "fit_page"
+        "default_fit_mode": "fit_page",
+        "max_cache_size": "128"
     },
     "shortcuts": {
         "prev_page": "Left",
@@ -189,7 +191,11 @@ DEFAULT_CONFIG = {
         "prev_archive": "Down",
         "next_archive": "Up",
         "reset_zoom": "Ctrl+0",
-        "set_100": "Ctrl+1"
+        "set_100": "Ctrl+1",
+        "fit_page": "1",
+        "fit_width": "2",
+        "fit_height": "3",
+        "close_all_archives": "5"
     }
 }
 
@@ -372,6 +378,11 @@ UI_JSON = {
             "zh": "设为 100%",
             "en": "Set to 100%",
             "ru": "Установить 100%"
+        },
+        "close_all_archives": {
+            "zh": "关闭所有归档",
+            "en": "Close all archives",
+            "ru": "Закрыть все архивы"
         }
     },
     "dialogs": {
@@ -387,6 +398,9 @@ UI_JSON = {
                   "<li><b>单击支持的文件</b>：展开或打开支持的文件</li>\n"
                   "<li><b>右键</b>：显示操作菜单</li>\n"
                   "<li><b>缩放模式：</b> 适应全页 / 适应高 / 适应宽 / 自定义百分比</li>\n"
+                  "<li><b>右键菜单还可以打开高质量的 De-moire 图像渲染算法</b></li>\n"
+                  "<li><b>数字键 1 / 2 / 3</b>：切换到 适应全页 / 适应宽 / 适应高（默认）</li>\n"
+                  "<li><b>数字键 5</b>：关闭所有已打开的压缩包</li>\n"
                   "<li><b>滚轮：</b> 当图片超出窗口时平移</li>\n"
                   "<li><b>左右边缘点击：</b> 点击图片区域左右边缘可翻页</li>\n"
                   "<li><b>F11 或 ⛶ 按钮：</b> 切换全屏 / 退出全屏</li>\n"
@@ -401,7 +415,6 @@ UI_JSON = {
                   "</ul>\n"
                   "<hr>\n"
                   "<p>程序记忆设置保存到 <code>config.ini</code> 文件中。</p>",
-
             "en": "<h2>Simple Comic Reader</h2>\n"
                   f"<p><b>Version:</b> {APP_VERSION}</p>\n"
                   "<p><b>Developer:</b> Setsuna (github@puffdayo)</p>\n"
@@ -413,6 +426,9 @@ UI_JSON = {
                   "<li><b>Click supported files</b>: Expand or open supported files</li>\n"
                   "<li><b>Right-click</b>: Show action menu</li>\n"
                   "<li><b>Scale modes:</b> Fit page / Fit height / Fit width / Custom %</li>\n"
+                  "<li><b>Inside right-click menu there's a high-quality de-moire image rendering option,</b></li>\n"
+                  "<li><b>Number keys 1 / 2 / 3</b>: Switch to Fit page / Fit width / Fit height (defaults)</li>\n"
+                  "<li><b>Number key 5</b>: Close all opened archives</li>\n"
                   "<li><b>Mouse wheel:</b> Pan when image exceeds window</li>\n"
                   "<li><b>Edge clicks:</b> Click left/right edges to flip pages</li>\n"
                   "<li><b>F11 or ⛶ button:</b> Toggle fullscreen</li>\n"
@@ -427,7 +443,6 @@ UI_JSON = {
                   "</ul>\n"
                   "<hr>\n"
                   "<p>Program stores settings in <code>config.ini</code>.</p>",
-
             "ru": "<h2>Простой просмотрщик комиксов</h2>\n"
                   f"<p><b>Версия:</b> {APP_VERSION}</p>\n"
                   "<p><b>Разработчик:</b> Setsuna (github@puffdayo)</p>\n"
@@ -439,6 +454,9 @@ UI_JSON = {
                   "<li><b>Клик по поддерживаемым файлам</b>: открыть или развернуть их</li>\n"
                   "<li><b>Правый клик</b>: Показать меню действий</li>\n"
                   "<li><b>Режимы масштабирования:</b> По странице / По высоте / По ширине / Процент</li>\n"
+                  "<li><b>В контекстном меню доступен фильтр de-moire для повышения качества изображения</b></li>\n"
+                  "<li><b>Цифровые клавиши 1 / 2 / 3</b>: Переключиться на По странице / По ширине / По высоте (по умолчанию)</li>\n"
+                  "<li><b>Клавиша 5</b>: Закрыть все открытые архивы</li>\n"
                   "<li><b>Колесо мыши:</b> Панорамирование, когда изображение больше окна</li>\n"
                   "<li><b>Клики по краям:</b> Нажатие слева/справа для перелистывания</li>\n"
                   "<li><b>F11 или ⛶:</b> Переключение полноэкранного режима</li>\n"
@@ -677,8 +695,10 @@ def get_system_lang():
         return "en"
     return "en"
 
-
-lang = get_system_lang()
+if MANUAL_LANG != "auto":
+    lang = MANUAL_LANG
+else:
+    lang = get_system_lang()
 
 
 def load_lang_from_JSON(lang):
@@ -770,6 +790,9 @@ class SettingsDialog(QDialog):
                                  UI['scale_options_fit_width']])
         layout.addRow(UI['labels_default_fit'], self.fit_combo)
 
+        self.cache_edit = QLineEdit(self)
+        layout.addRow("RAM strategy", self.cache_edit)
+
         self.ks_prev = QKeySequenceEdit(self)
         self.ks_next = QKeySequenceEdit(self)
         self.ks_prev_arch = QKeySequenceEdit(self)
@@ -783,6 +806,16 @@ class SettingsDialog(QDialog):
         layout.addRow(UI['shortcuts_next_archive'], self.ks_next_arch)
         layout.addRow(UI['shortcuts_reset_zoom'], self.ks_reset)
         layout.addRow(UI['shortcuts_set_100'], self.ks_100)
+
+        self.ks_fit_page = QKeySequenceEdit(self)
+        self.ks_fit_width = QKeySequenceEdit(self)
+        self.ks_fit_height = QKeySequenceEdit(self)
+        self.ks_close_all = QKeySequenceEdit(self)
+
+        layout.addRow(UI['scale_options_fit_page'], self.ks_fit_page)
+        layout.addRow(UI['scale_options_fit_height'], self.ks_fit_width)
+        layout.addRow(UI['scale_options_fit_width'], self.ks_fit_height)
+        layout.addRow(UI['shortcuts_close_all_archives'], self.ks_close_all)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel, parent=self)
         buttons.accepted.connect(self.accept)
@@ -803,6 +836,7 @@ class SettingsDialog(QDialog):
             self.fit_combo.setCurrentIndex(1)
         else:
             self.fit_combo.setCurrentIndex(2)
+        self.cache_edit.setText(gen.get("max_cache_size", "128"))
 
         self.ks_prev.setKeySequence(QKeySequence(sc.get("prev_page", "Left")))
         self.ks_next.setKeySequence(QKeySequence(sc.get("next_page", "Right")))
@@ -810,6 +844,10 @@ class SettingsDialog(QDialog):
         self.ks_next_arch.setKeySequence(QKeySequence(sc.get("next_archive", "Up")))
         self.ks_reset.setKeySequence(QKeySequence(sc.get("reset_zoom", "Ctrl+0")))
         self.ks_100.setKeySequence(QKeySequence(sc.get("set_100", "Ctrl+1")))
+        self.ks_fit_page.setKeySequence(QKeySequence(sc.get("fit_page", "1")))
+        self.ks_fit_width.setKeySequence(QKeySequence(sc.get("fit_width", "2")))
+        self.ks_fit_height.setKeySequence(QKeySequence(sc.get("fit_height", "3")))
+        self.ks_close_all.setKeySequence(QKeySequence(sc.get("close_all_archives", "5")))
 
     def to_config(self):
         cfg = {"general": {}, "shortcuts": {}}
@@ -817,6 +855,7 @@ class SettingsDialog(QDialog):
         cfg["general"]["background_color"] = self.bg_color_edit.text().strip() or "#ffffff"
         idx = self.fit_combo.currentIndex()
         cfg["general"]["default_fit_mode"] = ("fit_page", "fit_height", "fit_width")[idx]
+        cfg["general"]["max_cache_size"] = self.cache_edit.text().strip()
 
         cfg["shortcuts"]["prev_page"] = self.ks_prev.keySequence().toString()
         cfg["shortcuts"]["next_page"] = self.ks_next.keySequence().toString()
@@ -824,6 +863,11 @@ class SettingsDialog(QDialog):
         cfg["shortcuts"]["next_archive"] = self.ks_next_arch.keySequence().toString()
         cfg["shortcuts"]["reset_zoom"] = self.ks_reset.keySequence().toString()
         cfg["shortcuts"]["set_100"] = self.ks_100.keySequence().toString()
+        cfg["shortcuts"]["fit_page"] = self.ks_fit_page.keySequence().toString()
+        cfg["shortcuts"]["fit_width"] = self.ks_fit_width.keySequence().toString()
+        cfg["shortcuts"]["fit_height"] = self.ks_fit_height.keySequence().toString()
+        cfg["shortcuts"]["close_all_archives"] = self.ks_close_all.keySequence().toString()
+
         return cfg
 
 
@@ -2027,10 +2071,10 @@ class ComicReader(QMainWindow):
 
         add_shortcut("F11", self.toggle_fullscreen)
 
-        add_shortcut(Qt.Key_1 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_page"))
-        add_shortcut(Qt.Key_2 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_width"))
-        add_shortcut(Qt.Key_3 | Qt.KeypadModifier, lambda: self.set_scale_mode("fit_height"))
-        add_shortcut(Qt.Key_5 | Qt.KeypadModifier, self.close_all_archives)
+        add_shortcut(scfg.get("fit_page", "1"), lambda: self.set_scale_mode("fit_page"))
+        add_shortcut(scfg.get("fit_width", "2"), lambda: self.set_scale_mode("fit_width"))
+        add_shortcut(scfg.get("fit_height", "3"), lambda: self.set_scale_mode("fit_height"))
+        add_shortcut(scfg.get("close_all_archives", "5"), self.close_all_archives)
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -2231,13 +2275,20 @@ class ComicReader(QMainWindow):
 
     def apply_settings(self):
         gen = self.config.get("general", {})
-        sc = self.config.get("shortcuts", {})
+        # sc = self.config.get("shortcuts", {})
 
         bg = gen.get("background_color", "#ffffff")
         try:
 
             self.image_label.setStyleSheet(f"background-color: {bg};")
             self._viewport.setStyleSheet(f"background-color: {bg};")
+        except Exception:
+            pass
+
+        cache_size = gen.get("max_cache_size", "128")
+        try:
+            self._pdf_cache_max = int(cache_size)
+            self._zip_img_cache_max = int(cache_size)
         except Exception:
             pass
 

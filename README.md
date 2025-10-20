@@ -20,6 +20,8 @@ Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fu
 - Zoom & Fit Modes
 - Keyboard Shortcuts
 - Configurable Settings saved in `config.ini`
+- High-quality De-moire image rendering (from right-click menu)
+- Automatic detection of archive filename encodings
 - Multi-language UI (English / 简体中文 / Русский)
 
 ---
@@ -48,9 +50,13 @@ Python 3.12+
 
 ```python
 dependencies = [
+    "charset-normalizer>=3.4.4",
     "nuitka>=2.8.1",
+    "numpy>=2.3.4",
+    "opencv-python>=4.11.0.86",
     "pillow>=11.3.0",
     "pymupdf==1.23.5",
     "pyside6>=6.10.0",
+    "pyzipper>=0.3.6",
 ]
 ```

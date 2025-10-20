@@ -16,6 +16,8 @@
 - 缩放与自适应模式
 - 键盘快捷键
 - 可配置设置（保存在 `config.ini`）
+- 自动检测压缩包文件名编码格式
+- 右键菜单可开启高质量去摩尔纹（De-moire）图像渲染算法
 - 多语言界面（English / 简体中文 / Русский）
 
 ---
@@ -43,9 +45,13 @@ Python 3.12+
 
 ```python
 dependencies = [
+    "charset-normalizer>=3.4.4",
     "nuitka>=2.8.1",
+    "numpy>=2.3.4",
+    "opencv-python>=4.11.0.86",
     "pillow>=11.3.0",
     "pymupdf==1.23.5",
     "pyside6>=6.10.0",
+    "pyzipper>=0.3.6",
 ]
 ```
