@@ -1,10 +1,13 @@
 # Simple Comic Reader
 
-[![CodeQL](https://github.com/puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/fbbf81f5e5434399bec0bc275ea988c9)](https://app.codacy.com/gh/puff-dayo/simple-comic-reader/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+> [!WARNING]
+> The software has been rewritten using wx at 2026.
+> This repository has been archived.
+> All code and releases have been moved to a new repository:
+> https://github.com/puff-dayo/wxReader
+> 
 
-[English](README.md) | [简体中文](README.zh_CN.md) | [Русский](README.ru_RU.md)
-
-A lightweight, comic and image reader built with Qt for Python.  
+[puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/puff-dayo/simple-comic-reader/actions/workflows/github-code-scanning/codeql)ows/github-code-scanning/codeql) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/fbbf81f5e5434399bec0bc275ea988c9)](https://app.codacy.com/gh/puff-dayo/simple-comic-reader/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)README.zh_CN.md)ME.md) | [简体中文](README.zh_CN.md) | [Русский](README.ru_RU.md) reader built with Qt for Python.  
 Viewing comic images, ZIP/CBZ archives, and PDF files — with zoom, pan, and fullscreen capabilities.
 
 <img width="1791" height="1080" alt="" src="https://github.com/user-attachments/assets/07a7bf8e-2623-47ee-aa89-c770ee2cec32" />
